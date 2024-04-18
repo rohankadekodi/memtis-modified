@@ -120,7 +120,7 @@ static unsigned long need_lowertier_promotion(pg_data_t *pgdat, struct mem_cgrou
     lruvec = mem_cgroup_lruvec(memcg, pgdat);
     lruvec_size = lruvec_lru_size(lruvec, LRU_ACTIVE_ANON, MAX_NR_ZONES);
     
-    if (htmm_mode == HTMM_NO_MIG)
+    if (htmm_mode == HTMM_NO_MIG || htmm_mode == HTMM_NO_DEMOTION)
 	return 0;
 
     return lruvec_size;
@@ -141,6 +141,9 @@ static bool need_toptier_demotion(pg_data_t *pgdat, struct mem_cgroup *memcg, un
   
     if (target_nid == NUMA_NO_NODE)
 	return false;
+
+    if (htmm_mode == HTMM_NO_DEMOTION)
+	return 0;
 
     target_pgdat = NODE_DATA(target_nid);
 
@@ -437,7 +440,7 @@ static unsigned long promote_page_list(struct list_head *page_list,
 	
 	if (!trylock_page(page))
 	    goto __keep;
-	if (!PageActive(page) && htmm_mode != HTMM_NO_MIG)
+	if (!PageActive(page) && (htmm_mode != HTMM_NO_MIG && htmm_mode != HTMM_NO_DEMOTION))
 	    goto __keep_locked;
 	if (unlikely(!page_evictable(page)))
 	    goto __keep_locked;
@@ -645,7 +648,7 @@ static unsigned long promote_node(pg_data_t *pgdat, struct mem_cgroup *memcg)
     nr_to_promote = min(nr_to_promote,
 		    lruvec_lru_size(lruvec, lru, MAX_NR_ZONES));
     
-    if (nr_to_promote == 0 && htmm_mode == HTMM_NO_MIG) {
+    if (nr_to_promote == 0 && (htmm_mode == HTMM_NO_MIG || htmm_mode == HTMM_NO_DEMOTION)) {
 	lru = LRU_INACTIVE_ANON;
 	nr_to_promote = min(tmp, lruvec_lru_size(lruvec, lru, MAX_NR_ZONES));
     }

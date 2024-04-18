@@ -21,6 +21,7 @@
 #define	HTMM_BASELINE	    0x1 /* unused */
 #define HTMM_HUGEPAGE_OPT   0x2 /* only used */
 #define HTMM_HUGEPAGE_OPT_V2	0x3 /* unused */
+#define HTMM_NO_DEMOTION    0x4
 
 /**/
 #define DRAM_ACCESS_LATENCY 80

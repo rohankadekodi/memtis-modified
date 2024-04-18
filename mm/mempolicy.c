@@ -2147,17 +2147,18 @@ struct page *alloc_pages_vma(gfp_t gfp, int order, struct vm_area_struct *vma,
 	    }
 
 	    //nid = orig_nid;
+	    if (htmm_mode != HTMM_NO_DEMOTION) {
+		    if (orig_nid != nid) {
+			    WRITE_ONCE(memcg->nodeinfo[orig_nid]->need_demotion, true);
+			    kmigraterd_wakeup(orig_nid);
+		    }
+		    else if (max_nr_pages <= (get_nr_lru_pages_node(memcg, pgdat) +
+					    get_memcg_demotion_watermark(max_nr_pages))) {
+			    WRITE_ONCE(memcg->nodeinfo[nid]->need_demotion, true);
+			    kmigraterd_wakeup(nid);
+		    }
+	    }
 
-	    if (orig_nid != nid) {
-		WRITE_ONCE(memcg->nodeinfo[orig_nid]->need_demotion, true);
-		kmigraterd_wakeup(orig_nid);
-	    }
-	    else if (max_nr_pages <= (get_nr_lru_pages_node(memcg, pgdat) +
-			get_memcg_demotion_watermark(max_nr_pages))) {
-		WRITE_ONCE(memcg->nodeinfo[nid]->need_demotion, true);
-		kmigraterd_wakeup(nid);
-	    }
-	    
 	    mpol_cond_put(pol);
 	    page = __alloc_pages_node(nid, gfp | __GFP_THISNODE, order);
 	    goto out;
@@ -3552,6 +3553,7 @@ static ssize_t htmm_mode_store(struct kobject *kobj,
 		case HTMM_BASELINE:
 		case HTMM_HUGEPAGE_OPT:
 		case HTMM_HUGEPAGE_OPT_V2:
+		case HTMM_NO_DEMOTION:
 			WRITE_ONCE(htmm_mode, mode);
 			break;
 		default:
