@@ -2123,7 +2123,7 @@ struct page *alloc_pages_vma(gfp_t gfp, int order, struct vm_area_struct *vma,
 
 	    if (pol->mode == MPOL_BIND) {
 		    nmask = policy_nodemask(gfp, pol);
-		    if (nmask->bits[0] == 2) {
+		    if (nmask && nmask->bits && nmask->bits[0] == 2) {
 			    if (htmm_cxl_mode) {
 				    pol->mode = MPOL_PREFERRED;
 				    mpol_cond_put(pol);
