@@ -2123,13 +2123,18 @@ struct page *alloc_pages_vma(gfp_t gfp, int order, struct vm_area_struct *vma,
 
 	    if (pol->mode == MPOL_BIND) {
 		    nmask = policy_nodemask(gfp, pol);
-		    if (nmask && nmask->bits && nmask->bits[0] == 2) {
+		    if (nmask && nmask->bits && nmask->bits[0] != 1) {
 			    if (htmm_cxl_mode) {
-				    pol->mode = MPOL_PREFERRED;
-				    mpol_cond_put(pol);
-				    page = __alloc_pages_node(1, gfp, order);
-				    goto out;
+				    nid = 1;
+			    } else {
+				    if ((nid = next_demotion_node(nid)) == NUMA_NO_NODE) {
+					    nid = first_memory_node;
+				    }
 			    }
+			    pol->mode = MPOL_PREFERRED;
+			    mpol_cond_put(pol);
+			    page = __alloc_pages_node(nid, gfp, order);
+			    goto out;
 		    }
 	    }
 
