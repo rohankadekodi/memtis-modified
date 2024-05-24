@@ -914,6 +914,26 @@ struct htmm_cooling_arg {
     struct mem_cgroup *memcg;
 };
 
+struct htmm_virtual_address_arg {
+    /*
+     * page_is_hot: 0 --> already cooled.
+     * page_is_hot: 1 --> cold after cooling
+     * page_is_hot: 2 --> hot after cooling
+     */
+    unsigned long virtual_address;
+    struct mem_cgroup *memcg;
+};
+
+struct htmm_accesses_arg {
+    /*
+     * page_is_hot: 0 --> already cooled.
+     * page_is_hot: 1 --> cold after cooling
+     * page_is_hot: 2 --> hot after cooling
+     */
+    unsigned long lifetime_accesses;
+    struct mem_cgroup *memcg;
+};
+
 static bool cooling_page_one(struct page *page, struct vm_area_struct *vma,
 	unsigned long address, void *arg)
 {
@@ -1127,6 +1147,91 @@ int get_pginfo_idx(struct page *page)
 
     rmap_walk(page, &rwc);
     return hca.page_is_hot;
+}
+
+static bool get_pginfo_lifetime_accesses_one(struct page *page, struct vm_area_struct *vma,
+	unsigned long address, void *arg)
+{
+    struct htmm_accesses_arg *hca = arg;
+    struct page_vma_mapped_walk pvmw = {
+	.page = page,
+	.vma = vma,
+	.address = address,
+    };
+    pginfo_t *pginfo;
+
+    while (page_vma_mapped_walk(&pvmw)) {
+	address = pvmw.address;
+	page = pvmw.page;
+
+	if (pvmw.pte) {
+	    struct page *pte_page;
+	    unsigned long cur_idx;
+	    pte_t *pte = pvmw.pte;
+
+	    pte_page = virt_to_page((unsigned long)pte);
+	    if (!PageHtmm(pte_page))
+		continue;
+
+	    pginfo = get_pginfo_from_pte(pte);
+	    if (!pginfo)
+		continue;
+	    
+	    hca->lifetime_accesses = pginfo->total_accesses;
+	} else if (pvmw.pmd) {
+	    hca->lifetime_accesses = 0;
+	}
+    }
+
+    return true;
+}
+
+unsigned long get_pginfo_lifetime_accesses(struct page *page)
+{
+    struct htmm_accesses_arg hca = {
+	.lifetime_accesses = 0,
+    };
+    struct rmap_walk_control rwc = {
+	.rmap_one = get_pginfo_lifetime_accesses_one,
+	.arg = (void *)&hca,
+    };
+
+    if (!PageAnon(page) || PageKsm(page))
+	return -1;
+
+    if (!page_mapped(page))
+	return -1;
+
+    rmap_walk(page, &rwc);
+    return hca.lifetime_accesses;
+}
+
+static bool get_page_virtual_address_one(struct page *page, struct vm_area_struct *vma,
+	unsigned long address, void *arg)
+{
+    struct htmm_virtual_address_arg *hca = arg;
+    hca->virtual_address = address;
+    return true;
+}
+
+unsigned long get_page_virtual_address(struct page *page)
+{
+    struct htmm_virtual_address_arg hca = {
+	.virtual_address = 1,
+    };
+    struct rmap_walk_control rwc = {
+	.rmap_one = get_page_virtual_address_one,
+	.arg = (void *)&hca,
+    };
+
+    if (!PageAnon(page) || PageKsm(page))
+	return 1;
+
+    if (!page_mapped(page))
+	return 1;
+
+    rmap_walk(page, &rwc);
+    return hca.virtual_address;
 }
 #endif
 

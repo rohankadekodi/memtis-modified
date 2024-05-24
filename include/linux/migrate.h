@@ -48,6 +48,13 @@ extern int migrate_page(struct address_space *mapping,
 extern int migrate_pages(struct list_head *l, new_page_t new, free_page_t free,
 		unsigned long private, enum migrate_mode mode, int reason,
 		unsigned int *ret_succeeded);
+extern int migrate_pages_internal(struct list_head *l, new_page_t new, free_page_t free,
+		unsigned long private, enum migrate_mode mode, int reason,
+		unsigned int *ret_succeeded, long long migration_ctr);
+extern void reset_page_promotion_ctr(void);
+extern void reset_page_demotion_ctr(void);
+extern void bpf_demotion_page_info(unsigned long page_pointer, unsigned long nr_accesses, unsigned long page_index, unsigned long huge_page, unsigned long migration_ctr, unsigned long page_ctr);
+extern void bpf_promotion_page_info(unsigned long page_pointer, unsigned long nr_accesses, unsigned long page_index, unsigned long huge_page, unsigned long migration_ctr, unsigned long page_ctr);
 extern struct page *alloc_migration_target(struct page *page, unsigned long private);
 extern int isolate_movable_page(struct page *page, isolate_mode_t mode);
 

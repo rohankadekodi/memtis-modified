@@ -863,6 +863,7 @@ static void update_base_page(struct vm_area_struct *vma,
     prev_accessed = pginfo->total_accesses;
     pginfo->nr_accesses++;
     pginfo->total_accesses += HPAGE_PMD_NR;
+    //pginfo->lifetime_accesses++;
     
     prev_idx = get_idx(prev_accessed);
     cur_idx = get_idx(pginfo->total_accesses);
@@ -920,8 +921,10 @@ static void update_huge_page(struct vm_area_struct *vma, pmd_t *pmd,
     pginfo_prev = pginfo->total_accesses;
     pginfo->nr_accesses++;
     pginfo->total_accesses += HPAGE_PMD_NR;
+    //pginfo->lifetime_accesses++;
     
     meta_page->total_accesses++;
+    //meta_page->lifetime_accesses++;
 
 #ifndef DEFERRED_SPLIT_ISOLATED
     if (check_split_huge_page(memcg, meta_page, false)) {
@@ -1317,6 +1320,8 @@ static void __adjust_active_threshold(struct mm_struct *mm,
     } else { // disable warm
 	memcg->warm_threshold = memcg->active_threshold;
     }
+
+    bpf_register_adaptation(memcg->warm_threshold);
 }
 
 static bool need_memcg_cooling (struct mem_cgroup *memcg)
@@ -1327,6 +1332,21 @@ static bool need_memcg_cooling (struct mem_cgroup *memcg)
 	return true;	
     }
     return false;
+}
+
+noinline void bpf_register_memory_access(unsigned long address, unsigned long memtier)
+{
+	BUG_ON(address == 0);
+}
+
+noinline void bpf_register_cooling(unsigned long address)
+{
+	BUG_ON(address == 0);
+}
+
+noinline void bpf_register_adaptation(unsigned long warm_idx)
+{
+	BUG_ON(warm_idx > 15);
 }
 
 void update_pginfo(pid_t pid, unsigned long address, enum events e)
@@ -1373,6 +1393,7 @@ void update_pginfo(pid_t pid, unsigned long address, enum events e)
 	memcg->nr_max_sampled++;
 	memcg->total_dram_accesses++;
 	memcg->total_accesses++;
+	bpf_register_memory_access(address, 1);
     }
     else if (ret == 2) {
 	memcg->nr_sampled++;
@@ -1380,6 +1401,7 @@ void update_pginfo(pid_t pid, unsigned long address, enum events e)
 	memcg->nr_max_sampled++;
 	memcg->total_nvm_accesses++;
 	memcg->total_accesses++;
+	bpf_register_memory_access(address, 2);
     } else
 	goto mmap_unlock;
     
@@ -1397,6 +1419,7 @@ void update_pginfo(pid_t pid, unsigned long address, enum events e)
 	    memcg->prev_max_dram_sampled >>= 1;
 	    memcg->prev_max_dram_sampled += memcg->max_dram_sampled;
 	    memcg->max_dram_sampled = 0;
+	    bpf_register_cooling(address);
 
 	    /* split decision period */
 	    /* split should be performed after cooling due to skewness factor */

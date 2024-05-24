@@ -109,6 +109,9 @@ extern int set_page_coolstatus(struct page *page, pte_t *pte, struct mm_struct *
 extern void set_lru_adjusting(struct mem_cgroup *memcg, bool inc_thres);
 
 extern void update_pginfo(pid_t pid, unsigned long address, enum events e);
+extern void bpf_register_memory_access(unsigned long address, unsigned long memtier);
+extern void bpf_register_cooling(unsigned long address);
+extern void bpf_register_adaptation(unsigned long warm_idx);
 
 extern bool deferred_split_huge_page_for_htmm(struct page *page);
 extern unsigned long deferred_split_scan_for_htmm(struct mem_cgroup_per_node *pn,
@@ -211,3 +214,5 @@ extern unsigned long get_memcg_promotion_watermark(unsigned long max_nr_pages);
 extern void kmigraterd_wakeup(int nid);
 extern int kmigraterd_init(void);
 extern void kmigraterd_stop(void);
+extern void bpf_demotion_loop_hook(unsigned long demotion_ctr, unsigned long nr_reclaimed, unsigned long nr_candidates, unsigned long warm_threshold);
+

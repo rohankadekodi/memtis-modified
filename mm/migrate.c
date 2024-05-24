@@ -59,6 +59,9 @@
 
 #include "internal.h"
 
+static unsigned long page_promotion_ctr = 0;
+static unsigned long page_demotion_ctr = 0;
+
 int isolate_movable_page(struct page *page, isolate_mode_t mode)
 {
 	struct address_space *mapping;
@@ -1536,6 +1539,28 @@ static inline int try_split_thp(struct page *page, struct page **page2,
 	return rc;
 }
 
+void reset_page_promotion_ctr()
+{
+	page_promotion_ctr = 0;
+}
+
+void reset_page_demotion_ctr()
+{
+	page_demotion_ctr = 0;
+}
+
+noinline void bpf_demotion_page_info(unsigned long page_pointer, unsigned long nr_accesses, unsigned long page_index, unsigned long huge_page, unsigned long migration_ctr, unsigned long page_ctr)
+{
+	// Do nothing
+	BUG_ON(page_pointer == 0);
+}
+
+noinline void bpf_promotion_page_info(unsigned long page_pointer, unsigned long nr_accesses, unsigned long page_index, unsigned long huge_page, unsigned long migration_ctr, unsigned long page_ctr)
+{
+	// Do nothing
+	BUG_ON(page_pointer == 0);
+}
+
 /*
  * migrate_pages - migrate the pages specified in a list, to the free pages
  *		   supplied as the target for the page migration
@@ -1559,9 +1584,9 @@ static inline int try_split_thp(struct page *page, struct page **page2,
  *
  * Returns the number of pages that were not migrated, or an error code.
  */
-int migrate_pages(struct list_head *from, new_page_t get_new_page,
+int migrate_pages_internal(struct list_head *from, new_page_t get_new_page,
 		free_page_t put_new_page, unsigned long private,
-		enum migrate_mode mode, int reason, unsigned int *ret_succeeded)
+		enum migrate_mode mode, int reason, unsigned int *ret_succeeded, long long migration_ctr)
 {
 	int retry = 1;
 	int thp_retry = 1;
@@ -1599,15 +1624,55 @@ retry:
 			nr_subpages = thp_nr_pages(page);
 			cond_resched();
 
-			if (PageHuge(page))
+			unsigned long huge_page = 0;
+			struct page *meta = NULL;
+			unsigned long page_idx = 0;
+			unsigned long lifetime_accesses = 0;
+			unsigned long virtual_address = 0;
+
+			if (PageHuge(page)) {
+				if (migration_ctr != -1) {
+					huge_page = 1;
+					meta = get_meta_page(page);
+					page_idx = meta->idx;
+					lifetime_accesses = meta->total_accesses; 	
+					virtual_address = get_page_virtual_address(page); 
+				}
 				rc = unmap_and_move_huge_page(get_new_page,
 						put_new_page, private, page,
 						pass > 2, mode, reason,
 						&ret_pages);
-			else
+			}
+			else {
+				if (migration_ctr != -1) {
+					if (is_thp) {
+						huge_page = 1;
+						meta = get_meta_page(page);
+						page_idx = meta->idx;
+						lifetime_accesses = meta->total_accesses; 	
+						virtual_address = get_page_virtual_address(page); 
+					} else {
+						/*
+						if (!PageAnon(page)) {
+							printk(KERN_INFO "%s: not anonymous page. so idx = -1\n", __func__);
+						}
+						if (PageKsm(page)) {
+							printk(KERN_INFO "%s: KSM page. so idx = -1\n", __func__);
+						}
+						if (!page_mapped(page)) {
+							printk(KERN_INFO "%s: page not mapped. So idx = -1\n", __func__);
+						}
+						*/
+						huge_page = 0;
+						page_idx = get_pginfo_idx(page);
+						lifetime_accesses = get_pginfo_lifetime_accesses(page);
+						virtual_address = get_page_virtual_address(page); 
+					}
+				}
 				rc = unmap_and_move(get_new_page, put_new_page,
 						private, page, pass > 2, mode,
 						reason, &ret_pages);
+			}
 			/*
 			 * The rules are:
 			 *	Success: non hugetlb page will be freed, hugetlb
@@ -1674,9 +1739,28 @@ retry:
 				if (is_thp) {
 					nr_thp_succeeded++;
 					nr_succeeded += nr_subpages;
+#ifdef CONFIG_HTMM
+					if (migration_ctr != -1) {
+						if (private == 0) {
+							bpf_promotion_page_info(virtual_address, lifetime_accesses, page_idx, (unsigned long) huge_page, migration_ctr, page_promotion_ctr++);
+						} else {
+							bpf_demotion_page_info(virtual_address, lifetime_accesses, page_idx, (unsigned long) huge_page, migration_ctr, page_demotion_ctr++);
+						}
+					}
+#endif // CONFIG_HTMM
 					break;
 				}
 				nr_succeeded++;
+#ifdef CONFIG_HTMM
+				if (migration_ctr != -1) {
+					BUG_ON(PageHuge(page));
+					if (private == 0) {
+						bpf_promotion_page_info(virtual_address, lifetime_accesses, page_idx, (unsigned long) huge_page, migration_ctr, page_promotion_ctr++);
+					} else {
+						bpf_demotion_page_info(virtual_address, lifetime_accesses, page_idx, (unsigned long) huge_page, migration_ctr, page_demotion_ctr++);
+					}
+				}
+#endif
 				break;
 			default:
 				/*
@@ -1720,6 +1804,13 @@ out:
 		*ret_succeeded = nr_succeeded;
 
 	return rc;
+}
+
+int migrate_pages(struct list_head *from, new_page_t get_new_page,
+		free_page_t put_new_page, unsigned long private,
+		enum migrate_mode mode, int reason, unsigned int *ret_succeeded)
+{
+	return migrate_pages_internal(from, get_new_page, put_new_page, private, mode, reason, ret_succeeded, -1);
 }
 
 struct page *alloc_migration_target(struct page *page, unsigned long private)
