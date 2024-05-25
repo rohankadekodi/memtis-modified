@@ -198,8 +198,10 @@ void check_transhuge_cooling(void *arg, struct page *page, bool locked)
 	    }
 
 	    /* halves access count for a huge page */
-	    for (i = 0; i < diff; i++)		
+	    for (i = 0; i < diff; i++) {		
 		meta_page->total_accesses >>= 1;
+		meta_page->ltm = (uint32_t)(meta_page->ltm * 3 / 4);
+	    }
 
 	    cur_idx = meta_page->total_accesses;
 	    cur_idx = get_idx(cur_idx);
@@ -256,8 +258,10 @@ void check_base_cooling(pginfo_t *pginfo, struct page *page, bool locked)
 	    pginfo->may_hot = false;
 
 	/* halves access count */
-	for (j = 0; j < diff; j++)
+	for (j = 0; j < diff; j++) {
 	    pginfo->total_accesses >>= 1;
+	    pginfo->ltm = (uint32_t)(pginfo->ltm * 3 / 4);
+	}
 	//if (pginfo->total_accesses == 0)
 	  //  pginfo->total_accesses = 1;
 
@@ -863,10 +867,17 @@ static void update_base_page(struct vm_area_struct *vma,
     prev_accessed = pginfo->total_accesses;
     pginfo->nr_accesses++;
     pginfo->total_accesses += HPAGE_PMD_NR;
+    pginfo->ltm += HPAGE_PMD_NR;
     //pginfo->lifetime_accesses++;
     
     prev_idx = get_idx(prev_accessed);
-    cur_idx = get_idx(pginfo->total_accesses);
+    cur_idx = pginfo->total_accesses;
+    /*
+    if (cur_idx < pginfo->ltm && (cur_idx * 5) > pginfo->ltm) {
+	cur_idx = pginfo->ltm;
+    }
+    */
+    cur_idx = get_idx(cur_idx);
 
     spin_lock(&memcg->access_lock);
 
@@ -921,10 +932,11 @@ static void update_huge_page(struct vm_area_struct *vma, pmd_t *pmd,
     pginfo_prev = pginfo->total_accesses;
     pginfo->nr_accesses++;
     pginfo->total_accesses += HPAGE_PMD_NR;
+    pginfo->ltm += HPAGE_PMD_NR;
     //pginfo->lifetime_accesses++;
     
     meta_page->total_accesses++;
-    //meta_page->lifetime_accesses++;
+    meta_page->ltm++;
 
 #ifndef DEFERRED_SPLIT_ISOLATED
     if (check_split_huge_page(memcg, meta_page, false)) {
@@ -934,7 +946,13 @@ static void update_huge_page(struct vm_area_struct *vma, pmd_t *pmd,
 
     /*subpage */
     prev_idx = get_idx(pginfo_prev);
-    cur_idx = get_idx(pginfo->total_accesses);
+    cur_idx = pginfo->total_accesses;
+    /*
+    if (cur_idx < pginfo->ltm && (cur_idx * 5) > pginfo->ltm) {
+	cur_idx = pginfo->ltm;
+    }
+    */
+    cur_idx = get_idx(cur_idx);
     spin_lock(&memcg->access_lock);
     if (prev_idx != cur_idx) {
 	if (memcg->ebp_hotness_hg[prev_idx] > 0)
@@ -952,6 +970,11 @@ static void update_huge_page(struct vm_area_struct *vma, pmd_t *pmd,
     /* hugepage */
     prev_idx = meta_page->idx;
     cur_idx = meta_page->total_accesses;
+    /*
+    if (cur_idx < meta_page->ltm && (cur_idx * 5) > meta_page->ltm) {
+	cur_idx = meta_page->ltm;
+    }
+    */
     cur_idx = get_idx(cur_idx);
     if (prev_idx != cur_idx) {
 	spin_lock(&memcg->access_lock);
