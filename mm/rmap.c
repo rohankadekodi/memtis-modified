@@ -87,6 +87,14 @@
 static struct kmem_cache *anon_vma_cachep;
 static struct kmem_cache *anon_vma_chain_cachep;
 
+static unsigned long decide_ltm_stm(unsigned long stm_accesses, unsigned long ltm_accesses)
+{
+	if (stm_accesses < ltm_accesses && (stm_accesses * 5) > ltm_accesses) {
+		return (unsigned long)(ltm_accesses / 3);
+	}
+	return stm_accesses;
+}
+
 static inline struct anon_vma *anon_vma_alloc(void)
 {
 	struct anon_vma *anon_vma;
@@ -951,7 +959,7 @@ static bool cooling_page_one(struct page *page, struct vm_area_struct *vma,
 
 	if (pvmw.pte) {
 	    struct page *pte_page;
-	    unsigned long prev_accessed, cur_idx;
+	    unsigned long prev_accessed, cur_idx, accesses;
 	    unsigned int memcg_cclock;
 	    pte_t *pte = pvmw.pte;
 
@@ -971,10 +979,13 @@ static bool cooling_page_one(struct page *page, struct vm_area_struct *vma,
 		
 		prev_accessed = pginfo->total_accesses;
 		pginfo->nr_accesses = 0;
-		for (j = 0; j < diff; j++)
+		for (j = 0; j < diff; j++) {
 		    pginfo->total_accesses >>= 1;
+		    pginfo->ltm = (uint32_t)(pginfo->ltm * 3 / 4);
+		}
 
-		cur_idx = get_idx(pginfo->total_accesses);
+		accesses = decide_ltm_stm(pginfo->total_accesses, pginfo->ltm);
+		cur_idx = get_idx(accesses);
 		hca->memcg->hotness_hg[cur_idx]++;
 		hca->memcg->ebp_hotness_hg[cur_idx]++;
 
@@ -1030,6 +1041,7 @@ static bool page_check_hotness_one(struct page *page, struct vm_area_struct *vma
 	unsigned long address, void *arg)
 {
     struct htmm_cooling_arg *hca = arg;
+    unsigned long accesses;
     struct page_vma_mapped_walk pvmw = {
 	.page = page,
 	.vma = vma,
@@ -1054,8 +1066,8 @@ static bool page_check_hotness_one(struct page *page, struct vm_area_struct *vma
 	    if (!pginfo)
 		continue;
 	    
-	    cur_idx = pginfo->total_accesses;
-	    cur_idx = get_idx(cur_idx);
+	    accesses = decide_ltm_stm(pginfo->total_accesses, pginfo->ltm);
+	    cur_idx = get_idx(accesses);
 	    if (cur_idx >= hca->memcg->active_threshold)
 		hca->page_is_hot = 2;
 	    else
@@ -1094,6 +1106,7 @@ static bool get_pginfo_idx_one(struct page *page, struct vm_area_struct *vma,
 	unsigned long address, void *arg)
 {
     struct htmm_cooling_arg *hca = arg;
+    unsigned long accesses;
     struct page_vma_mapped_walk pvmw = {
 	.page = page,
 	.vma = vma,
@@ -1118,8 +1131,8 @@ static bool get_pginfo_idx_one(struct page *page, struct vm_area_struct *vma,
 	    if (!pginfo)
 		continue;
 	    
-	    cur_idx = pginfo->total_accesses;
-	    cur_idx = get_idx(cur_idx);
+	    accesses = decide_ltm_stm(pginfo->total_accesses, pginfo->ltm);
+	    cur_idx = get_idx(accesses);
 	    hca->page_is_hot = cur_idx;
 	} else if (pvmw.pmd) {
 	    hca->page_is_hot = -1;

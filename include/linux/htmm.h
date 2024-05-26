@@ -109,7 +109,7 @@ extern int set_page_coolstatus(struct page *page, pte_t *pte, struct mm_struct *
 extern void set_lru_adjusting(struct mem_cgroup *memcg, bool inc_thres);
 
 extern void update_pginfo(pid_t pid, unsigned long address, enum events e);
-extern void bpf_register_memory_access(unsigned long address, unsigned long memtier);
+extern void bpf_register_memory_access(unsigned long address, unsigned long memtier, unsigned long stm_accesses, unsigned long ltm_accesses, unsigned int bucket_idx);
 extern void bpf_register_cooling(unsigned long address);
 extern void bpf_register_adaptation(unsigned long warm_idx);
 
