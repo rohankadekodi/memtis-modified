@@ -1549,13 +1549,25 @@ void reset_page_demotion_ctr()
 	page_demotion_ctr = 0;
 }
 
-noinline void bpf_demotion_page_info(unsigned long page_pointer, unsigned long nr_accesses, unsigned long page_index, unsigned long huge_page, unsigned long migration_ctr, unsigned long page_ctr)
+noinline void bpf_huge_demotion_page_info(unsigned long page_pointer, unsigned int page_idx, unsigned long ltm_accesses)
 {
 	// Do nothing
 	BUG_ON(page_pointer == 0);
 }
 
-noinline void bpf_promotion_page_info(unsigned long page_pointer, unsigned long nr_accesses, unsigned long page_index, unsigned long huge_page, unsigned long migration_ctr, unsigned long page_ctr)
+noinline void bpf_huge_promotion_page_info(unsigned long page_pointer, unsigned int page_idx, unsigned long ltm_accesses)
+{
+	// Do nothing
+	BUG_ON(page_pointer == 0);
+}
+
+noinline void bpf_demotion_page_info(unsigned long page_pointer, unsigned int page_idx, unsigned long ltm_accesses)
+{
+	// Do nothing
+	BUG_ON(page_pointer == 0);
+}
+
+noinline void bpf_promotion_page_info(unsigned long page_pointer, unsigned int page_idx, unsigned long ltm_accesses)
 {
 	// Do nothing
 	BUG_ON(page_pointer == 0);
@@ -1626,16 +1638,18 @@ retry:
 
 			unsigned long huge_page = 0;
 			struct page *meta = NULL;
-			unsigned long page_idx = 0;
-			unsigned long lifetime_accesses = 0;
+			unsigned int page_idx = 0;
+			unsigned long stm_accesses = 0;
 			unsigned long virtual_address = 0;
+			unsigned long ltm_accesses = 0;
 
 			if (PageHuge(page)) {
 				if (migration_ctr != -1) {
 					huge_page = 1;
 					meta = get_meta_page(page);
 					page_idx = meta->idx;
-					lifetime_accesses = meta->total_accesses; 	
+					stm_accesses = meta->total_accesses; 	
+					ltm_accesses = meta->ltm;
 					virtual_address = get_page_virtual_address(page); 
 				}
 				rc = unmap_and_move_huge_page(get_new_page,
@@ -1649,7 +1663,8 @@ retry:
 						huge_page = 1;
 						meta = get_meta_page(page);
 						page_idx = meta->idx;
-						lifetime_accesses = meta->total_accesses; 	
+						stm_accesses = (unsigned int)meta->total_accesses; 	
+						ltm_accesses = (unsigned int)meta->ltm;
 						virtual_address = get_page_virtual_address(page); 
 					} else {
 						/*
@@ -1665,7 +1680,8 @@ retry:
 						*/
 						huge_page = 0;
 						page_idx = get_pginfo_idx(page);
-						lifetime_accesses = get_pginfo_lifetime_accesses(page);
+						stm_accesses = (unsigned int)get_pginfo_lifetime_accesses(page);
+						ltm_accesses = (unsigned int)get_pginfo_ltm_accesses(page);
 						virtual_address = get_page_virtual_address(page); 
 					}
 				}
@@ -1741,10 +1757,12 @@ retry:
 					nr_succeeded += nr_subpages;
 #ifdef CONFIG_HTMM
 					if (migration_ctr != -1) {
-						if (private == 0) {
-							bpf_promotion_page_info(virtual_address, lifetime_accesses, page_idx, (unsigned long) huge_page, migration_ctr, page_promotion_ctr++);
-						} else {
-							bpf_demotion_page_info(virtual_address, lifetime_accesses, page_idx, (unsigned long) huge_page, migration_ctr, page_demotion_ctr++);
+						if (private == 0 && virtual_address != 0) {
+							//bpf_promotion_page_info(virtual_address, lifetime_accesses, page_idx, (unsigned long) huge_page, migration_ctr, page_promotion_ctr++);
+							bpf_huge_promotion_page_info(virtual_address, page_idx, ltm_accesses);
+						} else if (virtual_address != 0) {
+							//bpf_demotion_page_info(virtual_address, lifetime_accesses, page_idx, (unsigned long) huge_page, migration_ctr, page_demotion_ctr++);
+							bpf_huge_demotion_page_info(virtual_address, page_idx, ltm_accesses);
 						}
 					}
 #endif // CONFIG_HTMM
@@ -1754,10 +1772,12 @@ retry:
 #ifdef CONFIG_HTMM
 				if (migration_ctr != -1) {
 					BUG_ON(PageHuge(page));
-					if (private == 0) {
-						bpf_promotion_page_info(virtual_address, lifetime_accesses, page_idx, (unsigned long) huge_page, migration_ctr, page_promotion_ctr++);
-					} else {
-						bpf_demotion_page_info(virtual_address, lifetime_accesses, page_idx, (unsigned long) huge_page, migration_ctr, page_demotion_ctr++);
+					if (private == 0 && virtual_address != 0) {
+						//bpf_promotion_page_info(virtual_address, lifetime_accesses, page_idx, (unsigned long) huge_page, migration_ctr, page_promotion_ctr++);
+						bpf_promotion_page_info(virtual_address, page_idx, ltm_accesses);
+					} else if (virtual_address != 0) {
+						//bpf_demotion_page_info(virtual_address, lifetime_accesses, page_idx, (unsigned long) huge_page, migration_ctr, page_demotion_ctr++);
+						bpf_demotion_page_info(virtual_address, page_idx, ltm_accesses);
 					}
 				}
 #endif

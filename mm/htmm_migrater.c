@@ -377,7 +377,7 @@ noinline void bpf_promotion_loop_hook(unsigned long promotion_ctr, unsigned long
 	count_vm_events(HTMM_NR_PROMOTED, nr_promoted);
 }
 
-noinline void bpf_demotion_loop_hook(unsigned long demotion_ctr, unsigned long nr_reclaimed, unsigned long nr_candidates, unsigned long warm_threshold)
+noinline void bpf_demotion_loop_hook(unsigned long demotion_ctr, unsigned long nr_reclaimed)
 {
 	// Do nothing
 	//printk(KERN_INFO "In the bpf demotion loop hook\n");
@@ -463,7 +463,8 @@ keep:
     list_splice(&ret_pages, page_list);
     //trace_printk("DEMOTION ROUND ENDED. NR_RECLAIMED = %lu\n", nr_reclaimed);
     if (nr_demotion_cand > 0) {
-	    bpf_demotion_loop_hook(demotion_ctr++, nr_reclaimed, nr_demotion_cand, memcg->warm_threshold);
+	    //bpf_demotion_loop_hook(demotion_ctr++, nr_reclaimed, nr_demotion_cand);
+	    bpf_demotion_loop_hook(demotion_ctr++, nr_reclaimed);
     }
 
     return nr_reclaimed;
