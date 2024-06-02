@@ -45,11 +45,12 @@ void __prep_transhuge_page_for_htmm(struct mm_struct *mm, struct page *page)
 {
     int i, idx, offset;
     struct mem_cgroup *memcg = mm ? get_mem_cgroup_from_mm(mm) : NULL;
-    pginfo_t pginfo = { 0, 0, 0, false, };
+    pginfo_t pginfo = { 0, 0, 0, false, 0, 0};
     int hotness_factor = memcg ? get_accesses_from_idx(memcg->active_threshold + 1) : 0;
     /* third tail page */
     page[3].hot_utils = 0;
     page[3].total_accesses = hotness_factor;
+    page[3].ltm = 0;
     page[3].skewness_idx = 0;
     page[3].idx = 0;
     SetPageHtmm(&page[3]);
@@ -57,11 +58,12 @@ void __prep_transhuge_page_for_htmm(struct mm_struct *mm, struct page *page)
     if (hotness_factor < 0)
 	hotness_factor = 0;
     pginfo.total_accesses = hotness_factor;
+    pginfo.ltm = 0;
     pginfo.nr_accesses = hotness_factor;
     /* fourth~ tail pages */
     for (i = 0; i < HPAGE_PMD_NR; i++) {
-	idx = 4 + i / 4;
-	offset = i % 4;
+	idx = 4 + i / 2;
+	offset = i % 2;
 	
 	page[idx].compound_pginfo[offset] = pginfo;
 	SetPageHtmm(&page[idx]);
@@ -112,6 +114,7 @@ void copy_transhuge_pginfo(struct page *page,
 
     newpage[3].hot_utils = page[3].hot_utils;
     newpage[3].total_accesses = page[3].total_accesses;
+    newpage[3].ltm = page[3].ltm;
     newpage[3].skewness_idx = page[3].skewness_idx;
     newpage[3].cooling_clock = page[3].cooling_clock;
     newpage[3].idx = page[3].idx;
@@ -119,13 +122,15 @@ void copy_transhuge_pginfo(struct page *page,
     SetPageHtmm(&newpage[3]);
 
     for (i = 0; i < HPAGE_PMD_NR; i++) {
-	idx = 4 + i / 4;
-	offset = i % 4;
+	idx = 4 + i / 2;
+	offset = i % 2;
 
 	newpage[idx].compound_pginfo[offset].nr_accesses =
 			page[idx].compound_pginfo[offset].nr_accesses;
 	newpage[idx].compound_pginfo[offset].total_accesses =
 			page[idx].compound_pginfo[offset].total_accesses;
+	newpage[idx].compound_pginfo[offset].ltm =
+			page[idx].compound_pginfo[offset].ltm;
 	
 	page[idx].compound_pginfo[offset] = zero_pginfo;
 	page[idx].mapping = TAIL_MAPPING;
@@ -138,10 +143,18 @@ pginfo_t *get_compound_pginfo(struct page *page, unsigned long address)
     int idx, offset;
     VM_BUG_ON_PAGE(!PageCompound(page), page);
     
-    idx = 4 + ((address & ~HPAGE_PMD_MASK) >> PAGE_SHIFT) / 4;
-    offset = ((address & ~HPAGE_PMD_MASK) >> PAGE_SHIFT) % 4;
+    idx = 4 + ((address & ~HPAGE_PMD_MASK) >> PAGE_SHIFT) / 2;
+    offset = ((address & ~HPAGE_PMD_MASK) >> PAGE_SHIFT) % 2;
 
     return &(page[idx].compound_pginfo[offset]);
+}
+
+static unsigned long decide_ltm_stm(unsigned long stm_accesses, unsigned long ltm_accesses)
+{
+	if (stm_accesses < ltm_accesses && (stm_accesses * 5) > ltm_accesses) {
+		return (unsigned long)(ltm_accesses / 3);
+	}
+	return stm_accesses;
 }
 
 void check_transhuge_cooling(void *arg, struct page *page, bool locked)
@@ -162,7 +175,7 @@ void check_transhuge_cooling(void *arg, struct page *page, bool locked)
     memcg_cclock = READ_ONCE(memcg->cooling_clock);
     if (memcg_cclock > meta_page->cooling_clock) {
 	    unsigned int diff = memcg_cclock - meta_page->cooling_clock;
-	    unsigned long prev_idx, cur_idx, skewness = 0;
+	    unsigned long prev_idx, cur_idx, accesses, skewness = 0;
 	    unsigned int refs = 0;
 	    unsigned int bp_hot_thres = min(memcg->active_threshold,
 					 memcg->bp_active_threshold);
@@ -172,8 +185,8 @@ void check_transhuge_cooling(void *arg, struct page *page, bool locked)
 	    for (i = 0; i < HPAGE_PMD_NR; i++) { // subpages
 		int j;
 
-		idx = 4 + i / 4;
-		offset = i % 4;
+		idx = 4 + i / 2;
+		offset = i % 2;
 		pginfo =&(page[idx].compound_pginfo[offset]);
 		prev_idx = get_idx(pginfo->total_accesses);
 		if (prev_idx >= bp_hot_thres) {
@@ -189,20 +202,28 @@ void check_transhuge_cooling(void *arg, struct page *page, bool locked)
 		    pginfo->may_hot = false;
 
 		/* halves access counts of subpages */
-		for (j = 0; j < diff; j++)
+		for (j = 0; j < diff; j++) {
 		    pginfo->total_accesses >>= 1;
+		    //pginfo->ltm >>= 1;
+		    pginfo->ltm = (uint32_t)(pginfo->ltm * 3 / 4);
+		}
 
 		/* updates estimated base page histogram */
-		cur_idx = get_idx(pginfo->total_accesses);
+		accesses = decide_ltm_stm(pginfo->total_accesses, pginfo->ltm);
+		//accesses = pginfo->total_accesses;
+		cur_idx = get_idx(accesses);
 		memcg->ebp_hotness_hg[cur_idx]++;
 	    }
 
 	    /* halves access count for a huge page */
-	    for (i = 0; i < diff; i++)		
+	    for (i = 0; i < diff; i++) {		
 		meta_page->total_accesses >>= 1;
+		//meta_page->ltm >>= 1;
+		meta_page->ltm = (uint32_t)(meta_page->ltm * 3 / 4);
+	    }
 
-	    cur_idx = meta_page->total_accesses;
-	    cur_idx = get_idx(cur_idx);
+	    accesses = decide_ltm_stm(meta_page->total_accesses, meta_page->ltm);
+	    cur_idx = get_idx(accesses);
 	    memcg->hotness_hg[cur_idx] += HPAGE_PMD_NR;
 	    meta_page->idx = cur_idx;
 
@@ -236,7 +257,7 @@ void check_transhuge_cooling(void *arg, struct page *page, bool locked)
 void check_base_cooling(pginfo_t *pginfo, struct page *page, bool locked)
 {
     struct mem_cgroup *memcg = page_memcg(page);
-    unsigned long prev_accessed, cur_idx;
+    unsigned long prev_accessed, cur_idx, accesses;
     unsigned int memcg_cclock;
 
     if (!memcg || !memcg->htmm_enabled)
@@ -256,12 +277,17 @@ void check_base_cooling(pginfo_t *pginfo, struct page *page, bool locked)
 	    pginfo->may_hot = false;
 
 	/* halves access count */
-	for (j = 0; j < diff; j++)
+	for (j = 0; j < diff; j++) {
 	    pginfo->total_accesses >>= 1;
+	    //pginfo->ltm >>= 1;
+	    pginfo->ltm = (uint32_t)(pginfo->ltm * 3 / 4);
+	}
 	//if (pginfo->total_accesses == 0)
 	  //  pginfo->total_accesses = 1;
 
-	cur_idx = get_idx(pginfo->total_accesses);
+	accesses = decide_ltm_stm(pginfo->total_accesses, pginfo->ltm);
+	//accesses = pginfo->total_accesses;
+	cur_idx = get_idx(accesses);
 	memcg->hotness_hg[cur_idx]++;
 	memcg->ebp_hotness_hg[cur_idx]++;
 
@@ -292,6 +318,7 @@ int set_page_coolstatus(struct page *page, pte_t *pte, struct mm_struct *mm)
     hotness_factor = get_accesses_from_idx(memcg->active_threshold + 1);
     
     pginfo->total_accesses = hotness_factor;
+    pginfo->ltm = hotness_factor;
     pginfo->nr_accesses = hotness_factor;
     if (htmm_skip_cooling)
 	pginfo->cooling_clock = READ_ONCE(memcg->cooling_clock) + 1;
@@ -641,8 +668,8 @@ void uncharge_htmm_page(struct page *page, struct mem_cgroup *memcg)
 	    memcg->hotness_hg[idx] = 0;
 	
 	for (i = 0; i < HPAGE_PMD_NR; i++) {
-	    int base_idx = 4 + i / 4;
-	    int offset = i % 4;
+	    int base_idx = 4 + i / 2;
+	    int offset = i % 2;
 	    pginfo_t *pginfo;
 
 	    pginfo = &(page[base_idx].compound_pginfo[offset]);
@@ -851,11 +878,12 @@ lru_unlock:
 }
 
 static void update_base_page(struct vm_area_struct *vma,
-	struct page *page, pginfo_t *pginfo)
+	struct page *page, pginfo_t *pginfo, unsigned long address)
 {
     struct mem_cgroup *memcg = get_mem_cgroup_from_mm(vma->vm_mm);
-    unsigned long prev_accessed, prev_idx, cur_idx;
+    unsigned long prev_accessed, prev_idx, cur_idx, accesses;
     bool hot;
+    int dram = 0;
 
     /* check cooling status and perform cooling if the page needs to be cooled */
     check_base_cooling(pginfo, page, false);
@@ -863,9 +891,27 @@ static void update_base_page(struct vm_area_struct *vma,
     prev_accessed = pginfo->total_accesses;
     pginfo->nr_accesses++;
     pginfo->total_accesses += HPAGE_PMD_NR;
+    pginfo->ltm += HPAGE_PMD_NR;
+    //pginfo->lifetime_accesses++;
     
     prev_idx = get_idx(prev_accessed);
-    cur_idx = get_idx(pginfo->total_accesses);
+    accesses = decide_ltm_stm(pginfo->total_accesses, pginfo->ltm);
+    //accesses = pginfo->total_accesses;
+    cur_idx = get_idx(accesses);
+    if (htmm_cxl_mode) {
+	    if (page_to_nid(page) == 0)
+		    dram = 1;
+	    else
+		    dram = 2;
+    }
+    else {
+	    if (node_is_toptier(page_to_nid(page)))
+		    dram = 1;
+	    else
+		    dram = 2;
+    }
+    //bpf_register_memory_access(address, dram, pginfo->total_accesses, 0, cur_idx);
+    bpf_register_memory_access_ltm((unsigned long) address, pginfo->total_accesses, pginfo->ltm);
 
     spin_lock(&memcg->access_lock);
 
@@ -907,9 +953,10 @@ static void update_huge_page(struct vm_area_struct *vma, pmd_t *pmd,
     struct mem_cgroup *memcg = get_mem_cgroup_from_mm(vma->vm_mm);
     struct page *meta_page;
     pginfo_t *pginfo;
-    unsigned long prev_idx, cur_idx;
+    unsigned long prev_idx, cur_idx, accesses;
     bool hot, pg_split = false;
     unsigned long pginfo_prev;
+    int dram = 0;
 
     meta_page = get_meta_page(page);
     pginfo = get_compound_pginfo(page, address);
@@ -920,8 +967,12 @@ static void update_huge_page(struct vm_area_struct *vma, pmd_t *pmd,
     pginfo_prev = pginfo->total_accesses;
     pginfo->nr_accesses++;
     pginfo->total_accesses += HPAGE_PMD_NR;
+    pginfo->ltm += HPAGE_PMD_NR;
+    //pginfo->lifetime_accesses++;
     
     meta_page->total_accesses++;
+    meta_page->ltm++;
+    //meta_page->ltm = 0;
 
 #ifndef DEFERRED_SPLIT_ISOLATED
     if (check_split_huge_page(memcg, meta_page, false)) {
@@ -931,7 +982,9 @@ static void update_huge_page(struct vm_area_struct *vma, pmd_t *pmd,
 
     /*subpage */
     prev_idx = get_idx(pginfo_prev);
-    cur_idx = get_idx(pginfo->total_accesses);
+    accesses = decide_ltm_stm(pginfo->total_accesses, pginfo->ltm);
+    //accesses = pginfo->total_accesses;
+    cur_idx = get_idx(accesses);
     spin_lock(&memcg->access_lock);
     if (prev_idx != cur_idx) {
 	if (memcg->ebp_hotness_hg[prev_idx] > 0)
@@ -948,8 +1001,25 @@ static void update_huge_page(struct vm_area_struct *vma, pmd_t *pmd,
 
     /* hugepage */
     prev_idx = meta_page->idx;
-    cur_idx = meta_page->total_accesses;
-    cur_idx = get_idx(cur_idx);
+    accesses = decide_ltm_stm(meta_page->total_accesses, meta_page->ltm);
+    cur_idx = get_idx(accesses);
+    if (htmm_cxl_mode) {
+	    if (page_to_nid(page) == 0)
+		    dram = 1;
+	    else
+		    dram = 2;
+    }
+    else {
+	    if (node_is_toptier(page_to_nid(page)))
+		    dram = 1;
+	    else
+		    dram = 2;
+    }
+    //BUG_ON(meta_page->ltm != 0);
+    //bpf_register_memory_access(address, dram, meta_page->total_accesses, meta_page->ltm, cur_idx);
+    //bpf_register_memory_access((unsigned long)address, (unsigned long)dram, (unsigned long)meta_page->total_accesses, (unsigned long)0, (unsigned long)cur_idx);
+    //bpf_register_memory_access((unsigned long)1, (unsigned long)0, (unsigned long)0, (unsigned long)0, (unsigned long)0);
+    bpf_register_memory_access_ltm((unsigned long) address, meta_page->total_accesses, meta_page->ltm);
     if (prev_idx != cur_idx) {
 	spin_lock(&memcg->access_lock);
 	if (memcg->hotness_hg[prev_idx] >= HPAGE_PMD_NR)
@@ -1007,7 +1077,7 @@ static int __update_pte_pginfo(struct vm_area_struct *vma, pmd_t *pmd,
     if (!pginfo)
 	goto pte_unlock;
 
-    update_base_page(vma, page, pginfo);
+    update_base_page(vma, page, pginfo, address);
     pte_unmap_unlock(pte, ptl);
     if (htmm_cxl_mode) {
 	if (page_to_nid(page) == 0)
@@ -1317,6 +1387,8 @@ static void __adjust_active_threshold(struct mm_struct *mm,
     } else { // disable warm
 	memcg->warm_threshold = memcg->active_threshold;
     }
+
+    bpf_register_adaptation(memcg->warm_threshold);
 }
 
 static bool need_memcg_cooling (struct mem_cgroup *memcg)
@@ -1327,6 +1399,30 @@ static bool need_memcg_cooling (struct mem_cgroup *memcg)
 	return true;	
     }
     return false;
+}
+
+noinline void bpf_register_memory_access_ltm(unsigned long address, unsigned long stm_accesses, unsigned long ltm_accesses)
+{
+	BUG_ON(ltm_accesses == 0);
+}
+
+noinline void bpf_register_memory_access(unsigned long address, unsigned long memtier, unsigned long stm_accesses, unsigned long ltm_accesses, unsigned long bucket_idx)
+{
+	BUG_ON(memtier != 0);
+	BUG_ON(bucket_idx != 0);
+	BUG_ON(stm_accesses != 0);
+	BUG_ON(ltm_accesses != 0);
+	BUG_ON(address == 0);
+}
+
+noinline void bpf_register_cooling(unsigned long address)
+{
+	BUG_ON(address == 0);
+}
+
+noinline void bpf_register_adaptation(unsigned long warm_idx)
+{
+	BUG_ON(warm_idx > 15);
 }
 
 void update_pginfo(pid_t pid, unsigned long address, enum events e)
@@ -1373,6 +1469,7 @@ void update_pginfo(pid_t pid, unsigned long address, enum events e)
 	memcg->nr_max_sampled++;
 	memcg->total_dram_accesses++;
 	memcg->total_accesses++;
+	//bpf_register_memory_access(address, 1);
     }
     else if (ret == 2) {
 	memcg->nr_sampled++;
@@ -1380,6 +1477,7 @@ void update_pginfo(pid_t pid, unsigned long address, enum events e)
 	memcg->nr_max_sampled++;
 	memcg->total_nvm_accesses++;
 	memcg->total_accesses++;
+	//bpf_register_memory_access(address, 2);
     } else
 	goto mmap_unlock;
     
@@ -1397,6 +1495,7 @@ void update_pginfo(pid_t pid, unsigned long address, enum events e)
 	    memcg->prev_max_dram_sampled >>= 1;
 	    memcg->prev_max_dram_sampled += memcg->max_dram_sampled;
 	    memcg->max_dram_sampled = 0;
+	    bpf_register_cooling(address);
 
 	    /* split decision period */
 	    /* split should be performed after cooling due to skewness factor */

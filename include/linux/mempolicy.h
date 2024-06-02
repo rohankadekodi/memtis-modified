@@ -183,6 +183,7 @@ extern bool vma_migratable(struct vm_area_struct *vma);
 
 extern int mpol_misplaced(struct page *, struct vm_area_struct *, unsigned long);
 extern void mpol_put_task_policy(struct task_struct *);
+extern void bpf_page_allocation(unsigned long virtual_address, unsigned long hugepage);
 
 extern bool numa_demotion_enabled;
 #ifdef CONFIG_HTMM

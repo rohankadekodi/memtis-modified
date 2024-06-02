@@ -37,6 +37,9 @@
 #define prefetchw_prev_lru_page(_page, _base, _field) do { } while (0)
 #endif
 
+static unsigned long demotion_ctr = 0;
+static unsigned long promotion_ctr = 0;
+
 void add_memcg_to_kmigraterd(struct mem_cgroup *memcg, int nid)
 {
     struct mem_cgroup_per_node *mz, *pn = memcg->nodeinfo[nid];
@@ -349,16 +352,39 @@ static unsigned long migrate_page_list(struct list_head *migrate_list,
     if (target_nid == NUMA_NO_NODE)
 	return 0;
 
-    migrate_pages(migrate_list, alloc_migrate_page, NULL,
-	    target_nid, MIGRATE_ASYNC, MR_NUMA_MISPLACED, &nr_succeeded);
+    migrate_pages_internal(migrate_list, alloc_migrate_page, NULL,
+	    target_nid, MIGRATE_ASYNC, MR_NUMA_MISPLACED, &nr_succeeded, promotion ? promotion_ctr : demotion_ctr);
 
-    if (promotion)
-	count_vm_events(HTMM_NR_PROMOTED, nr_succeeded);
-    else
-	count_vm_events(HTMM_NR_DEMOTED, nr_succeeded);
+    if (promotion) {
+	//trace_printk("counting vm event of promotion: %u\n", nr_succeeded);
+	//printk(KERN_INFO "promotion number: %u\n", nr_succeeded);
+	//count_vm_events(HTMM_NR_PROMOTED, nr_succeeded);
+    }
+    else {
+	//trace_printk("counting vm event of demotion: %u\n", nr_succeeded);
+	//printk(KERN_INFO "demotion number: %u\n", nr_succeeded);
+	//count_vm_events(HTMM_NR_DEMOTED, nr_succeeded);
+    }
 
     return nr_succeeded;
 }
+
+noinline void bpf_promotion_loop_hook(unsigned long promotion_ctr, unsigned long nr_promoted) 
+{
+	// Do nothing
+	//printk(KERN_INFO "In the bpf demotion loop hook\n");
+	BUG_ON(promotion_ctr < 0);
+	count_vm_events(HTMM_NR_PROMOTED, nr_promoted);
+}
+
+noinline void bpf_demotion_loop_hook(unsigned long demotion_ctr, unsigned long nr_reclaimed)
+{
+	// Do nothing
+	//printk(KERN_INFO "In the bpf demotion loop hook\n");
+	BUG_ON(demotion_ctr < 0);
+	count_vm_events(HTMM_NR_DEMOTED, nr_reclaimed);
+}
+
 
 static unsigned long shrink_page_list(struct list_head *page_list,
 	pg_data_t* pgdat, struct mem_cgroup *memcg, bool shrink_active,
@@ -368,8 +394,13 @@ static unsigned long shrink_page_list(struct list_head *page_list,
     LIST_HEAD(ret_pages);
     unsigned long nr_reclaimed = 0;
     unsigned long nr_demotion_cand = 0;
+    int huge_page = 0;
+    unsigned long page_idx = 0;
+    unsigned long lifetime_accesses = 0;
 
     cond_resched();
+
+    //trace_printk("DEMOTION ROUND STARTED. warm bucket idx = %d\n", memcg->warm_threshold);
 
     while (!list_empty(page_list)) {
 	struct page *page;
@@ -396,14 +427,24 @@ static unsigned long shrink_page_list(struct list_head *page_list,
 
 		if (meta->idx >= memcg->warm_threshold)
 		    goto keep_locked;
+		huge_page = 1;
+		page_idx = meta->idx;
+		lifetime_accesses = meta->total_accesses;
 	    } else {
 		unsigned int idx = get_pginfo_idx(page);
+		page_idx = idx;
+		lifetime_accesses = get_pginfo_lifetime_accesses(page);
 
 		if (idx >= memcg->warm_threshold)
 		    goto keep_locked;
+
+		huge_page = 0;
 	    }
 	}
 
+	//trace_printk("demote_page: num_accesses %lu, huge_page = %d\n", lifetime_accesses_page, huge_page);
+	unsigned long virtual_address = get_page_virtual_address(page);
+	//bpf_demotion_page_info(virtual_address, lifetime_accesses, page_idx, (unsigned long) huge_page, demotion_ctr, page_demotion_ctr++);
 	unlock_page(page);
 	list_add(&page->lru, &demote_pages);
 	nr_demotion_cand += compound_nr(page);
@@ -416,10 +457,16 @@ keep:
     }
 
     nr_reclaimed = migrate_page_list(&demote_pages, pgdat, false);
-    if (!list_empty(&demote_pages))
+    if (!list_empty(&demote_pages)) 
 	list_splice(&demote_pages, page_list);
 
     list_splice(&ret_pages, page_list);
+    //trace_printk("DEMOTION ROUND ENDED. NR_RECLAIMED = %lu\n", nr_reclaimed);
+    if (nr_demotion_cand > 0) {
+	    //bpf_demotion_loop_hook(demotion_ctr++, nr_reclaimed, nr_demotion_cand);
+	    bpf_demotion_loop_hook(demotion_ctr++, nr_reclaimed);
+    }
+
     return nr_reclaimed;
 }
 
@@ -429,8 +476,12 @@ static unsigned long promote_page_list(struct list_head *page_list,
     LIST_HEAD(promote_pages);
     LIST_HEAD(ret_pages);
     unsigned long nr_promoted = 0;
+    int huge_page = 0;
+    unsigned long page_idx = 0;
+    unsigned long lifetime_accesses = 0;
 
     cond_resched();
+    //trace_printk("PROMOTION ROUND STARTED");
 
     while (!list_empty(page_list)) {
 	struct page *page;
@@ -449,6 +500,18 @@ static unsigned long promote_page_list(struct list_head *page_list,
 	if (PageTransHuge(page) && !thp_migration_supported())
 	    goto __keep_locked;
 
+	if (PageTransHuge(page)) {
+		struct page *meta = get_meta_page(page);
+		huge_page = 1;
+		page_idx = meta->idx;
+		lifetime_accesses = meta->total_accesses;
+	} else {
+		huge_page = 0;
+		page_idx = get_pginfo_idx(page);
+		lifetime_accesses = get_pginfo_lifetime_accesses(page);
+	}
+	unsigned long virtual_address = get_page_virtual_address(page);
+	//bpf_promotion_page_info(virtual_address, lifetime_accesses, page_idx, (unsigned long) huge_page, promotion_ctr, page_promotion_ctr++);
 	list_add(&page->lru, &promote_pages);
 	unlock_page(page);
 	continue;
@@ -463,6 +526,10 @@ __keep:
 	list_splice(&promote_pages, page_list);
 
     list_splice(&ret_pages, page_list);
+    //trace_printk("PROMOTION ROUND ENDED. NR_PROMOTED = %lu\n", nr_promoted);
+    if (nr_promoted > 0) {
+	    bpf_promotion_loop_hook(promotion_ctr++, nr_promoted);
+    }
     return nr_promoted;
 }
 
@@ -941,6 +1008,8 @@ static struct mem_cgroup_per_node *next_memcg_cand(pg_data_t *pgdat)
 static int kmigraterd_demotion(pg_data_t *pgdat)
 {
     const struct cpumask *cpumask = cpumask_of_node(pgdat->node_id);
+    demotion_ctr = 0;
+    reset_page_demotion_ctr();
 
     if (!cpumask_empty(cpumask))
 	set_cpus_allowed_ptr(pgdat->kmigraterd, cpumask);
@@ -1006,6 +1075,8 @@ static int kmigraterd_demotion(pg_data_t *pgdat)
 static int kmigraterd_promotion(pg_data_t *pgdat)
 {
     const struct cpumask *cpumask;
+    promotion_ctr = 0;
+    reset_page_promotion_ctr();
 
     if (htmm_cxl_mode)
     	cpumask = cpumask_of_node(pgdat->node_id);

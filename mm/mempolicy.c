@@ -2069,6 +2069,11 @@ static struct page *alloc_pages_preferred_many(gfp_t gfp, unsigned int order,
 	return page;
 }
 
+noinline void bpf_page_allocation(unsigned long virtual_address, unsigned long hugepage)
+{
+	BUG_ON(virtual_address == ULONG_MAX);
+}
+
 /**
  * alloc_pages_vma - Allocate a page for a VMA.
  * @gfp: GFP flags.
@@ -2121,6 +2126,7 @@ struct page *alloc_pages_vma(gfp_t gfp, int order, struct vm_area_struct *vma,
 	    if (max_nr_pages == ULONG_MAX)
 		goto use_default_pol;
 
+	    bpf_page_allocation(addr, hugepage);
 	    if (pol->mode == MPOL_BIND) {
 		    nmask = policy_nodemask(gfp, pol);
 		    if (nmask && nmask->bits && nmask->bits[0] != 1) {

@@ -194,6 +194,9 @@ int page_referenced(struct page *, int is_locked,
 int cooling_page(struct page *page, struct mem_cgroup *memcg);
 int page_check_hotness(struct page *page, struct mem_cgroup *memcg);
 int get_pginfo_idx(struct page *page);
+unsigned long get_pginfo_lifetime_accesses(struct page *page);
+unsigned long get_pginfo_ltm_accesses(struct page *page);
+unsigned long get_page_virtual_address(struct page *page);
 #endif
 void try_to_migrate(struct page *page, enum ttu_flags flags);
 void try_to_unmap(struct page *, enum ttu_flags flags);
@@ -313,6 +316,10 @@ static inline int page_check_hotness(struct page *page, struct mem_cgroup *memcg
 static int get_pginfo_idx(struct page *page)
 {
     return -1;
+}
+static unsigned long get_pginfo_lifetime_accesses(struct page *page)
+{
+    return 0;
 }
 #endif
 
