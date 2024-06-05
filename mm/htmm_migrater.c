@@ -353,7 +353,7 @@ static unsigned long migrate_page_list(struct list_head *migrate_list,
 	return 0;
 
     migrate_pages_internal(migrate_list, alloc_migrate_page, NULL,
-	    target_nid, MIGRATE_ASYNC, MR_NUMA_MISPLACED, &nr_succeeded, promotion ? promotion_ctr : demotion_ctr);
+	    target_nid, MIGRATE_ASYNC, MR_NUMA_MISPLACED, &nr_succeeded, promotion ? promotion_ctr : demotion_ctr, 1);
 
     if (promotion) {
 	//trace_printk("counting vm event of promotion: %u\n", nr_succeeded);
@@ -504,10 +504,20 @@ static unsigned long promote_page_list(struct list_head *page_list,
 		struct page *meta = get_meta_page(page);
 		huge_page = 1;
 		page_idx = meta->idx;
+		/*
+		if (page_idx <= htmm_memcg->warm_threshold) {
+			goto __keep_locked;
+		}
+		*/
 		lifetime_accesses = meta->total_accesses;
 	} else {
 		huge_page = 0;
 		page_idx = get_pginfo_idx(page);
+		/*
+		if (page_idx <= htmm_memcg->warm_threshold) {
+			goto __keep_locked;
+		}
+		*/
 		lifetime_accesses = get_pginfo_lifetime_accesses(page);
 	}
 	unsigned long virtual_address = get_page_virtual_address(page);

@@ -3052,11 +3052,11 @@ void mpol_to_str(char *buffer, int maxlen, struct mempolicy *pol)
 
 bool numa_demotion_enabled = false;
 #ifdef CONFIG_HTMM /* sysfs htmm */
-unsigned int htmm_sample_period = 199;
-unsigned int htmm_inst_sample_period = 100007;
+unsigned long htmm_sample_period = 199;
+unsigned long htmm_inst_sample_period = 100007;
 unsigned int htmm_thres_hot = 1;
-unsigned int htmm_cooling_period = 2000000;
-unsigned int htmm_adaptation_period = 100000;
+unsigned long htmm_cooling_period = 2000000;
+unsigned long htmm_adaptation_period = 100000;
 unsigned int htmm_split_period = 2; /* used to shift the wss of memcg */
 unsigned int ksampled_min_sample_ratio = 50; // 50%
 unsigned int ksampled_max_sample_ratio = 10; // 10%
@@ -3134,7 +3134,7 @@ subsys_initcall(numa_init_sysfs);
 static ssize_t htmm_sample_period_show(struct kobject *kobj,
 				   struct kobj_attribute *attr, char *buf)
 {
-	return sysfs_emit(buf, "%u\n", htmm_sample_period);
+	return sysfs_emit(buf, "%lu\n", htmm_sample_period);
 }
 
 static ssize_t htmm_sample_period_store(struct kobject *kobj,
@@ -3159,7 +3159,7 @@ static struct kobj_attribute htmm_sample_period_attr =
 static ssize_t htmm_inst_sample_period_show(struct kobject *kobj,
 				   struct kobj_attribute *attr, char *buf)
 {
-	return sysfs_emit(buf, "%u\n", htmm_inst_sample_period);
+	return sysfs_emit(buf, "%lu\n", htmm_inst_sample_period);
 }
 
 static ssize_t htmm_inst_sample_period_store(struct kobject *kobj,
@@ -3235,7 +3235,7 @@ static struct kobj_attribute htmm_thres_hot_attr =
 static ssize_t htmm_cooling_period_show(struct kobject *kobj,
 				    struct kobj_attribute *attr, char *buf)
 {
-	return sysfs_emit(buf, "%u\n", htmm_cooling_period);
+	return sysfs_emit(buf, "%lu\n", htmm_cooling_period);
 }
 
 static ssize_t htmm_cooling_period_store(struct kobject *kobj,
@@ -3435,7 +3435,7 @@ static struct kobj_attribute htmm_nowarm_attr =
 static ssize_t htmm_adaptation_period_show(struct kobject *kobj,
 				   struct kobj_attribute *attr, char *buf)
 {
-	return sysfs_emit(buf, "%u\n", htmm_adaptation_period);
+	return sysfs_emit(buf, "%lu\n", htmm_adaptation_period);
 }
 
 static ssize_t htmm_adaptation_period_store(struct kobject *kobj,
@@ -3539,13 +3539,17 @@ static ssize_t htmm_mode_show(struct kobject *kobj,
 			      struct kobj_attribute *attr, char *buf)
 {
 	if (htmm_mode == HTMM_NO_MIG)
-		return sysfs_emit(buf, "%s\n", "[NO MIG-0], BASELINE-1, HUGEPAGE_OPT-2, HUGEPAGE_OPT_V2-3");
+		return sysfs_emit(buf, "%s\n", "[NO MIG-0], BASELINE-1, HUGEPAGE_OPT-2, HUGEPAGE_OPT_V2-3, NO DEMOTION-4, LSTM-5");
 	else if (htmm_mode == HTMM_BASELINE)
-		return sysfs_emit(buf, "%s\n", "NO MIG-0, [BASELINE-1], HUGEPAGE_OPT-2, HUGEPAGE_OPT_V2");
+		return sysfs_emit(buf, "%s\n", "NO MIG-0, [BASELINE-1], HUGEPAGE_OPT-2, HUGEPAGE_OPT_V2, NO DEMOTION-4, LSTM-5");
 	else if (htmm_mode == HTMM_HUGEPAGE_OPT)
-		return sysfs_emit(buf, "%s\n", "NO MIG-0, BASELINE-1, [HUGEPAGE_OPT-2], HUGEPAGE_OPT_V2-3");
-	else /* htmm_mode == HTMM_HUGEPAGE_OPT_V2 */
-		return sysfs_emit(buf, "%s\n", "NO MIG-0, BASELINE-1, HUGEPAGE_OPT-2, [HUGEPAGE_OPT_V2]");
+		return sysfs_emit(buf, "%s\n", "NO MIG-0, BASELINE-1, [HUGEPAGE_OPT-2], HUGEPAGE_OPT_V2-3, NO DEMOTION-4, LSTM-5");
+	else if (htmm_mode == HTMM_HUGEPAGE_OPT_V2)/* htmm_mode == HTMM_HUGEPAGE_OPT_V2 */
+		return sysfs_emit(buf, "%s\n", "NO MIG-0, BASELINE-1, HUGEPAGE_OPT-2, [HUGEPAGE_OPT_V2-3], NO DEMOTION-4, LSTM-5");
+	else if (htmm_mode == HTMM_NO_DEMOTION)/* htmm_mode == HTMM_NO_DEMOTION */
+		return sysfs_emit(buf, "%s\n", "NO MIG-0, BASELINE-1, HUGEPAGE_OPT-2, HUGEPAGE_OPT_V2, [NO DEMOTION-4], LSTM-5");
+	else /* htmm_mode == HTMM_LSTM */
+		return sysfs_emit(buf, "%s\n", "NO MIG-0, BASELINE-1, HUGEPAGE_OPT-2, HUGEPAGE_OPT_V2, NO DEMOTION-4, [LSTM-5]");
 }
 
 static ssize_t htmm_mode_store(struct kobject *kobj,
@@ -3565,6 +3569,7 @@ static ssize_t htmm_mode_store(struct kobject *kobj,
 		case HTMM_HUGEPAGE_OPT:
 		case HTMM_HUGEPAGE_OPT_V2:
 		case HTMM_NO_DEMOTION:
+		case HTMM_LSTM:
 			WRITE_ONCE(htmm_mode, mode);
 			break;
 		default:

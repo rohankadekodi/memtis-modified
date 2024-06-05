@@ -1549,27 +1549,39 @@ void reset_page_demotion_ctr()
 	page_demotion_ctr = 0;
 }
 
-noinline void bpf_huge_demotion_page_info(unsigned long page_pointer, unsigned int page_idx, unsigned long ltm_accesses)
+noinline void bpf_huge_demotion_page_info(unsigned long page_pointer, unsigned int page_idx, unsigned long ltm_accesses, unsigned long accesses_before_mig, unsigned long total_accesses)
 {
 	// Do nothing
+	if (total_accesses == 0) {
+		printk(KERN_INFO "%s: total accesses is 0\n", __func__);
+	}
 	BUG_ON(page_pointer == 0);
 }
 
-noinline void bpf_huge_promotion_page_info(unsigned long page_pointer, unsigned int page_idx, unsigned long ltm_accesses)
+noinline void bpf_huge_promotion_page_info(unsigned long page_pointer, unsigned int page_idx, unsigned long ltm_accesses, unsigned long accesses_before_mig, unsigned long total_accesses)
 {
 	// Do nothing
+	if (total_accesses == 0) {
+		printk(KERN_INFO "%s: total accesses is 0\n", __func__);
+	}
 	BUG_ON(page_pointer == 0);
 }
 
-noinline void bpf_demotion_page_info(unsigned long page_pointer, unsigned int page_idx, unsigned long ltm_accesses)
+noinline void bpf_demotion_page_info(unsigned long page_pointer, unsigned int page_idx, unsigned long ltm_accesses, unsigned long accesses_before_mig, unsigned long total_accesses)
 {
 	// Do nothing
+	if (total_accesses == 0) {
+		printk(KERN_INFO "%s: total accesses is 0\n", __func__);
+	}
 	BUG_ON(page_pointer == 0);
 }
 
-noinline void bpf_promotion_page_info(unsigned long page_pointer, unsigned int page_idx, unsigned long ltm_accesses)
+noinline void bpf_promotion_page_info(unsigned long page_pointer, unsigned int page_idx, unsigned long ltm_accesses, unsigned long accesses_before_mig, unsigned long total_accesses)
 {
 	// Do nothing
+	if (total_accesses == 0) {
+		printk(KERN_INFO "%s: total accesses is 0\n", __func__);
+	}
 	BUG_ON(page_pointer == 0);
 }
 
@@ -1598,7 +1610,7 @@ noinline void bpf_promotion_page_info(unsigned long page_pointer, unsigned int p
  */
 int migrate_pages_internal(struct list_head *from, new_page_t get_new_page,
 		free_page_t put_new_page, unsigned long private,
-		enum migrate_mode mode, int reason, unsigned int *ret_succeeded, long long migration_ctr)
+		enum migrate_mode mode, int reason, unsigned int *ret_succeeded, long long migration_ctr, int from_htmm)
 {
 	int retry = 1;
 	int thp_retry = 1;
@@ -1641,7 +1653,10 @@ retry:
 			unsigned int page_idx = 0;
 			unsigned long stm_accesses = 0;
 			unsigned long virtual_address = 0;
+			unsigned long accesses_before_mig = 0;
 			unsigned long ltm_accesses = 0;
+			unsigned long total_accesses = 0;
+
 
 			if (PageHuge(page)) {
 				if (migration_ctr != -1) {
@@ -1650,6 +1665,8 @@ retry:
 					page_idx = meta->idx;
 					stm_accesses = meta->total_accesses; 	
 					ltm_accesses = meta->ltm;
+					accesses_before_mig = (unsigned int)meta->accesses_per_mig;
+					meta->accesses_per_mig = 0;
 					virtual_address = get_page_virtual_address(page); 
 				}
 				rc = unmap_and_move_huge_page(get_new_page,
@@ -1665,6 +1682,8 @@ retry:
 						page_idx = meta->idx;
 						stm_accesses = (unsigned int)meta->total_accesses; 	
 						ltm_accesses = (unsigned int)meta->ltm;
+						accesses_before_mig = (unsigned int)meta->accesses_per_mig;
+						meta->accesses_per_mig = 0;
 						virtual_address = get_page_virtual_address(page); 
 					} else {
 						/*
@@ -1682,6 +1701,7 @@ retry:
 						page_idx = get_pginfo_idx(page);
 						stm_accesses = (unsigned int)get_pginfo_lifetime_accesses(page);
 						ltm_accesses = (unsigned int)get_pginfo_ltm_accesses(page);
+						accesses_before_mig = get_pginfo_accesses_per_mig(page);
 						virtual_address = get_page_virtual_address(page); 
 					}
 				}
@@ -1752,32 +1772,33 @@ retry:
 				retry++;
 				break;
 			case MIGRATEPAGE_SUCCESS:
-				if (is_thp) {
-					nr_thp_succeeded++;
-					nr_succeeded += nr_subpages;
+				if (from_htmm) {
+					if (htmm_memcg) {
+						total_accesses = htmm_memcg->total_accesses;	
+					}
+					if (is_thp) {
+						nr_thp_succeeded++;
+						nr_succeeded += nr_subpages;
+#ifdef CONFIG_HTMM
+						if (migration_ctr != -1) {
+							if (private == 0 && virtual_address != 0) {
+								bpf_huge_promotion_page_info(virtual_address, page_idx, ltm_accesses, accesses_before_mig, total_accesses);
+							} else if (virtual_address != 0) {
+								bpf_huge_demotion_page_info(virtual_address, page_idx, ltm_accesses, accesses_before_mig, total_accesses);
+							}
+						}
+#endif // CONFIG_HTMM
+						break;
+					}
+					nr_succeeded++;
 #ifdef CONFIG_HTMM
 					if (migration_ctr != -1) {
+						BUG_ON(PageHuge(page));
 						if (private == 0 && virtual_address != 0) {
-							//bpf_promotion_page_info(virtual_address, lifetime_accesses, page_idx, (unsigned long) huge_page, migration_ctr, page_promotion_ctr++);
-							bpf_huge_promotion_page_info(virtual_address, page_idx, ltm_accesses);
+							bpf_promotion_page_info(virtual_address, page_idx, ltm_accesses, accesses_before_mig, total_accesses);
 						} else if (virtual_address != 0) {
-							//bpf_demotion_page_info(virtual_address, lifetime_accesses, page_idx, (unsigned long) huge_page, migration_ctr, page_demotion_ctr++);
-							bpf_huge_demotion_page_info(virtual_address, page_idx, ltm_accesses);
+							bpf_demotion_page_info(virtual_address, page_idx, ltm_accesses, accesses_before_mig, total_accesses);
 						}
-					}
-#endif // CONFIG_HTMM
-					break;
-				}
-				nr_succeeded++;
-#ifdef CONFIG_HTMM
-				if (migration_ctr != -1) {
-					BUG_ON(PageHuge(page));
-					if (private == 0 && virtual_address != 0) {
-						//bpf_promotion_page_info(virtual_address, lifetime_accesses, page_idx, (unsigned long) huge_page, migration_ctr, page_promotion_ctr++);
-						bpf_promotion_page_info(virtual_address, page_idx, ltm_accesses);
-					} else if (virtual_address != 0) {
-						//bpf_demotion_page_info(virtual_address, lifetime_accesses, page_idx, (unsigned long) huge_page, migration_ctr, page_demotion_ctr++);
-						bpf_demotion_page_info(virtual_address, page_idx, ltm_accesses);
 					}
 				}
 #endif
@@ -1830,7 +1851,7 @@ int migrate_pages(struct list_head *from, new_page_t get_new_page,
 		free_page_t put_new_page, unsigned long private,
 		enum migrate_mode mode, int reason, unsigned int *ret_succeeded)
 {
-	return migrate_pages_internal(from, get_new_page, put_new_page, private, mode, reason, ret_succeeded, -1);
+	return migrate_pages_internal(from, get_new_page, put_new_page, private, mode, reason, ret_succeeded, -1, 0);
 }
 
 struct page *alloc_migration_target(struct page *page, unsigned long private)

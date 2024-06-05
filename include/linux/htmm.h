@@ -22,6 +22,7 @@
 #define HTMM_HUGEPAGE_OPT   0x2 /* only used */
 #define HTMM_HUGEPAGE_OPT_V2	0x3 /* unused */
 #define HTMM_NO_DEMOTION    0x4
+#define HTMM_LSTM	    0x5
 
 /**/
 #define DRAM_ACCESS_LATENCY 80
@@ -96,7 +97,7 @@ extern void htmm_mm_init(struct mm_struct *mm);
 extern void htmm_mm_exit(struct mm_struct *mm);
 extern void __prep_transhuge_page_for_htmm(struct mm_struct *mm, struct page *page);
 extern void prep_transhuge_page_for_htmm(struct vm_area_struct *vma,
-					 struct page *page);
+					 struct page *page, unsigned long virtual_address);
 extern void clear_transhuge_pginfo(struct page *page);
 extern void copy_transhuge_pginfo(struct page *page,
 				  struct page *newpage);
@@ -104,16 +105,23 @@ extern pginfo_t *get_compound_pginfo(struct page *page, unsigned long address);
 
 extern void check_transhuge_cooling(void *arg, struct page *page, bool locked);
 extern void check_base_cooling(pginfo_t *pginfo, struct page *page, bool locked);
-extern int set_page_coolstatus(struct page *page, pte_t *pte, struct mm_struct *mm);
+extern int set_page_coolstatus(struct page *page, pte_t *pte, struct mm_struct *mm, unsigned long fault_address);
 
 extern void set_lru_adjusting(struct mem_cgroup *memcg, bool inc_thres);
 
 extern void update_pginfo(pid_t pid, unsigned long address, enum events e);
 extern void bpf_register_memory_access(unsigned long address, unsigned long memtier, unsigned long stm_accesses, unsigned long ltm_accesses, unsigned long bucket_idx);
-//extern void bpf_register_memory_access_ltm(unsigned long ltm_accesses);
-extern void bpf_register_memory_access_ltm(unsigned long address, unsigned long stm_accesses, unsigned long ltm_accesses);
-extern void bpf_register_cooling(unsigned long address);
-extern void bpf_register_adaptation(unsigned long warm_idx);
+extern void bpf_register_memory_access_ltm(unsigned long address, unsigned long stm_accesses, unsigned long memtier, unsigned long hot_threshold, unsigned long total_accesses);
+//extern void bpf_register_memory_access_ltm(unsigned long address, unsigned long stm_accesses, unsigned long ltm_accesses, unsigned long total_accesses);
+extern void bpf_register_cooling(unsigned long address, unsigned long total_accesses);
+extern void bpf_register_adaptation(unsigned long warm_idx, unsigned long hot_idx, unsigned long total_accesses);
+extern void bpf_register_page_alloc(unsigned long virtual_address, unsigned long hugepage, unsigned long total_accesses);
+extern void bpf_register_page_add_to_mig_queue_promotion(unsigned long virtual_address,
+		unsigned long total_accesses, unsigned long accesses_per_mig,
+		unsigned long stm, unsigned long ltm);
+extern void bpf_register_page_add_to_mig_queue_demotion(unsigned long virtual_address,
+		unsigned long total_accesses, unsigned long accesses_per_mig,
+		unsigned long stm, unsigned long ltm);
 
 extern bool deferred_split_huge_page_for_htmm(struct page *page);
 extern unsigned long deferred_split_scan_for_htmm(struct mem_cgroup_per_node *pn,
@@ -123,8 +131,8 @@ extern void putback_split_pages(struct list_head *split_list, struct lruvec *lru
 extern bool check_split_huge_page(struct mem_cgroup *memcg, struct page *meta, bool hot);
 extern bool move_page_to_deferred_split_queue(struct mem_cgroup *memcg, struct page *page);
 
-extern void move_page_to_active_lru(struct page *page);
-extern void move_page_to_inactive_lru(struct page *page);
+extern void move_page_to_active_lru(struct page *page, unsigned long total_accesses, unsigned long accesses_per_mig, unsigned long stm, unsigned long ltm);
+extern void move_page_to_inactive_lru(struct page *page, unsigned long total_accesses, unsigned long accesses_per_mig, unsigned long stm, unsigned long ltm);
 
 
 extern struct page *get_meta_page(struct page *page);
@@ -143,6 +151,26 @@ extern void set_lru_cooling_pid(pid_t pid);
 /* htmm_sampler.c */
 extern int ksamplingd_init(pid_t pid, int node);
 extern void ksamplingd_exit(void);
+
+extern int process_pid;
+extern void *memcg;
+
+static inline unsigned long decide_ltm_stm(unsigned long stm_accesses, unsigned long ltm_accesses, unsigned long htmm_mode)
+{
+	if (htmm_mode == HTMM_LSTM) {
+		if ((stm_accesses * 3) < (3 * ltm_accesses) &&
+			(stm_accesses * 15) > ltm_accesses) {
+			return (unsigned long)(ltm_accesses / 3);
+		}
+		return stm_accesses;
+	}
+	return stm_accesses;
+}
+
+static inline unsigned long update_ltm(unsigned long current_ltm)
+{
+	return ((current_ltm * 9) / 10);
+}
 
 static inline unsigned long get_sample_period(unsigned long cur) {
     if (cur < 0)

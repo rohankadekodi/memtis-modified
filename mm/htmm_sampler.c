@@ -15,6 +15,8 @@
 
 struct task_struct *access_sampling = NULL;
 struct perf_event ***mem_event;
+int process_pid = -2;
+struct mem_cgroup *htmm_memcg = NULL;
 
 static bool valid_va(unsigned long addr)
 {
@@ -229,6 +231,9 @@ static int ksamplingd(void *data)
 		    struct perf_event_mmap_page *up;
 		    struct perf_event_header *ph;
 		    struct htmm_event *he;
+		    struct pid *pid_struct = NULL;
+		    struct task_struct *p = NULL;
+		    struct mm_struct *mm = NULL;
 		    unsigned long pg_index, offset;
 		    int page_shift;
 		    __u64 head;
@@ -277,6 +282,16 @@ static int ksamplingd(void *data)
 			    he = (struct htmm_event *)ph;
 			    if (!valid_va(he->addr)) {
 				break;
+			    }
+
+			    if (process_pid == -2) {
+				process_pid = he->pid;
+				pid_struct = find_get_pid(process_pid);
+				p = pid_struct ? pid_task(pid_struct, PIDTYPE_PID) : NULL;
+				mm = p ? p->mm : NULL;
+				if (mm) { 
+					htmm_memcg = get_mem_cgroup_from_mm(mm);
+				}
 			    }
 
 			    update_pginfo(he->pid, he->addr, event);

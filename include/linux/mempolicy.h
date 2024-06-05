@@ -187,12 +187,12 @@ extern void bpf_page_allocation(unsigned long virtual_address, unsigned long hug
 
 extern bool numa_demotion_enabled;
 #ifdef CONFIG_HTMM
-extern unsigned int htmm_sample_period;
-extern unsigned int htmm_inst_sample_period;
+extern unsigned long htmm_sample_period;
+extern unsigned long htmm_inst_sample_period;
 extern unsigned int htmm_split_period;
 extern unsigned int htmm_thres_hot;
-extern unsigned int htmm_cooling_period;
-extern unsigned int htmm_adaptation_period;
+extern unsigned long htmm_cooling_period;
+extern unsigned long htmm_adaptation_period;
 extern unsigned int ksampled_min_sample_ratio;
 extern unsigned int ksampled_max_sample_ratio;
 extern unsigned int htmm_demotion_period_in_ms;
