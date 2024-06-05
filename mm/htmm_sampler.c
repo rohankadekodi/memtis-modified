@@ -249,7 +249,7 @@ static int ksamplingd(void *data)
 		    up = READ_ONCE(rb->user_page);
 		    head = READ_ONCE(up->data_head);
 		    if (head == up->data_tail) {
-			if (cpu < 24)
+			if (cpu < 20)
 			    nr_skip++;
 			//continue;
 			break;
