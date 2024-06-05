@@ -202,6 +202,7 @@ extern unsigned int htmm_nowarm;
 extern unsigned int htmm_util_weight;
 extern unsigned int htmm_gamma;
 extern unsigned int htmm_mode;
+extern unsigned int htmm_base_page_inc;
 extern bool htmm_cxl_mode;
 extern bool htmm_skip_cooling;
 extern unsigned int htmm_thres_cooling_alloc;

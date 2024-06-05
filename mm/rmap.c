@@ -87,14 +87,6 @@
 static struct kmem_cache *anon_vma_cachep;
 static struct kmem_cache *anon_vma_chain_cachep;
 
-static unsigned long decide_ltm_stm(unsigned long stm_accesses, unsigned long ltm_accesses)
-{
-	if (stm_accesses < ltm_accesses && (stm_accesses * 5) > ltm_accesses) {
-		return (unsigned long)(ltm_accesses / 3);
-	}
-	return stm_accesses;
-}
-
 static inline struct anon_vma *anon_vma_alloc(void)
 {
 	struct anon_vma *anon_vma;
@@ -984,7 +976,7 @@ static bool cooling_page_one(struct page *page, struct vm_area_struct *vma,
 		    pginfo->ltm = (uint32_t)(pginfo->ltm * 3 / 4);
 		}
 
-		accesses = decide_ltm_stm(pginfo->total_accesses, pginfo->ltm);
+		accesses = decide_ltm_stm(pginfo->total_accesses, pginfo->ltm, htmm_mode);
 		//accesses = pginfo->total_accesses;
 		cur_idx = get_idx(accesses);
 		hca->memcg->hotness_hg[cur_idx]++;
@@ -1067,7 +1059,7 @@ static bool page_check_hotness_one(struct page *page, struct vm_area_struct *vma
 	    if (!pginfo)
 		continue;
 	    
-	    accesses = decide_ltm_stm(pginfo->total_accesses, pginfo->ltm);
+	    accesses = decide_ltm_stm(pginfo->total_accesses, pginfo->ltm, htmm_mode);
 	    //accesses = pginfo->total_accesses;
 	    cur_idx = get_idx(accesses);
 	    if (cur_idx >= hca->memcg->active_threshold)
@@ -1133,7 +1125,7 @@ static bool get_pginfo_idx_one(struct page *page, struct vm_area_struct *vma,
 	    if (!pginfo)
 		continue;
 	    
-	    accesses = decide_ltm_stm(pginfo->total_accesses, pginfo->ltm);
+	    accesses = decide_ltm_stm(pginfo->total_accesses, pginfo->ltm, htmm_mode);
 	    //accesses = pginfo->total_accesses;
 	    cur_idx = get_idx(accesses);
 	    hca->page_is_hot = cur_idx;

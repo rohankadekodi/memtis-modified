@@ -1980,14 +1980,6 @@ static void __split_huge_zero_page_pmd(struct vm_area_struct *vma,
 	pmd_populate(mm, pmd, pgtable);
 }
 
-static unsigned long decide_ltm_stm(unsigned long stm_accesses, unsigned long ltm_accesses)
-{
-	if (stm_accesses < ltm_accesses && (stm_accesses * 5) > ltm_accesses) {
-		return (unsigned long)(ltm_accesses / 3);
-	}
-	return stm_accesses;
-}
-
 static void __split_huge_pmd_locked(struct vm_area_struct *vma, pmd_t *pmd,
 		unsigned long haddr, bool freeze)
 {
@@ -2163,7 +2155,7 @@ static void __split_huge_pmd_locked(struct vm_area_struct *vma, pmd_t *pmd,
 		pte_pginfo->ltm = tail_pginfo->ltm;
 		pte_pginfo->cooling_clock = tail_pginfo->cooling_clock;
 		
-		accesses = decide_ltm_stm(pte_pginfo->total_accesses, pte_pginfo->ltm);
+		accesses = decide_ltm_stm(pte_pginfo->total_accesses, pte_pginfo->ltm, htmm_mode);
 		//accesses = pte_pginfo->total_accesses;
 		cur_idx = get_idx(accesses);
 		if (get_idx(cur_idx) >= (memcg->active_threshold - 1))

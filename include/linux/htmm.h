@@ -3,7 +3,7 @@
 #define DEFERRED_SPLIT_ISOLATED 1
 
 #define BUFFER_SIZE	32 /* 128: 1MB */
-#define CPUS_PER_SOCKET 32
+#define CPUS_PER_SOCKET 24
 #define MAX_MIGRATION_RATE_IN_MBPS  2048 /* 2048MB per sec */
 
 
@@ -22,6 +22,7 @@
 #define HTMM_HUGEPAGE_OPT   0x2 /* only used */
 #define HTMM_HUGEPAGE_OPT_V2	0x3 /* unused */
 #define HTMM_NO_DEMOTION    0x4
+#define HTMM_LSTM	    0x5
 
 /**/
 #define DRAM_ACCESS_LATENCY 80
@@ -143,6 +144,23 @@ extern void set_lru_cooling_pid(pid_t pid);
 /* htmm_sampler.c */
 extern int ksamplingd_init(pid_t pid, int node);
 extern void ksamplingd_exit(void);
+
+
+static inline unsigned long decide_ltm_stm(unsigned long stm_accesses, unsigned long ltm_accesses, int htmm_mode)
+{
+	if (htmm_mode == HTMM_LSTM) {
+		if ((stm_accesses * 3) < (3 * ltm_accesses) &&
+			(stm_accesses * 15) > ltm_accesses) {
+			return (unsigned long)(ltm_accesses / 3);
+		}
+	}
+	return stm_accesses;
+}
+
+static inline unsigned long cool_ltm(unsigned long ltm_accesses)
+{
+	return (unsigned long)((ltm_accesses * 9) / 10);
+}
 
 static inline unsigned long get_sample_period(unsigned long cur) {
     if (cur < 0)
