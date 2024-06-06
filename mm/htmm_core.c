@@ -209,7 +209,7 @@ void check_transhuge_cooling(void *arg, struct page *page, bool locked)
 	    /* halves access count for a huge page */
 	    for (i = 0; i < diff; i++) {		
 		meta_page->total_accesses >>= 1;
-		meta_page->ltm = cool_ltm(pginfo->ltm);
+		meta_page->ltm = cool_ltm(meta_page->ltm);
 	    }
 
 	    accesses = decide_ltm_stm(meta_page->total_accesses, meta_page->ltm, htmm_mode);

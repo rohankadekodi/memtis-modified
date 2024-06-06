@@ -151,7 +151,7 @@ static inline unsigned long decide_ltm_stm(unsigned long stm_accesses, unsigned 
 	if (htmm_mode == HTMM_LSTM) {
 		if ((stm_accesses * 3) < (3 * ltm_accesses) &&
 			(stm_accesses * 15) > ltm_accesses) {
-			return (unsigned long)(ltm_accesses / 3);
+			return (unsigned long)(ltm_accesses / 9);
 		}
 	}
 	return stm_accesses;
