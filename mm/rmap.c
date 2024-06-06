@@ -973,7 +973,8 @@ static bool cooling_page_one(struct page *page, struct vm_area_struct *vma,
 		pginfo->nr_accesses = 0;
 		for (j = 0; j < diff; j++) {
 		    pginfo->total_accesses >>= 1;
-		    pginfo->ltm = (uint32_t)(pginfo->ltm * 3 / 4);
+		    pginfo->ltm = update_ltm(pginfo->ltm);
+		    //pginfo->ltm = (uint32_t)(pginfo->ltm * 3 / 4);
 		}
 
 		accesses = decide_ltm_stm(pginfo->total_accesses, pginfo->ltm, htmm_mode);
