@@ -3,7 +3,7 @@
 #define DEFERRED_SPLIT_ISOLATED 1
 
 #define BUFFER_SIZE	32 /* 128: 1MB */
-#define CPUS_PER_SOCKET 32
+#define CPUS_PER_SOCKET 20
 #define MAX_MIGRATION_RATE_IN_MBPS  2048 /* 2048MB per sec */
 
 
@@ -160,7 +160,8 @@ static inline unsigned long decide_ltm_stm(unsigned long stm_accesses, unsigned 
 	if (htmm_mode == HTMM_LSTM) {
 		if ((stm_accesses * 3) < (3 * ltm_accesses) &&
 			(stm_accesses * 15) > ltm_accesses) {
-			return (unsigned long)(ltm_accesses / 3);
+
+			return (unsigned long)(ltm_accesses / 9);
 		}
 		return stm_accesses;
 	}

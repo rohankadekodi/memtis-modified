@@ -743,6 +743,7 @@ static unsigned long cooling_active_list(unsigned long nr_to_scan,
 	struct lruvec *lruvec, enum lru_list lru)
 {
     unsigned long nr_taken;
+    unsigned long virtual_address;
     struct mem_cgroup *memcg = lruvec_memcg(lruvec);
     pg_data_t *pgdat = lruvec_pgdat(lruvec);
     LIST_HEAD(l_hold);
@@ -789,10 +790,24 @@ static unsigned long cooling_active_list(unsigned long nr_to_scan,
 #endif
 		check_transhuge_cooling((void *)memcg, page, false);
 
-		if (meta->idx >= memcg->active_threshold)
+		if (meta->idx >= memcg->active_threshold) {
 		    still_hot = 2;
-		else
+		    if (!PageActive(page)) {
+			    virtual_address = get_page_virtual_address(page);
+			    if (virtual_address != 1) {
+				    bpf_register_page_add_to_mig_queue_promotion(virtual_address, memcg->total_accesses, meta->accesses_per_mig, meta->total_accesses, meta->ltm);
+			    }
+		    }
+		}
+		else {
 		    still_hot = 1;
+		    if (PageActive(page)) {
+			    virtual_address = get_page_virtual_address(page);
+			    if (virtual_address != 1) {
+				    bpf_register_page_add_to_mig_queue_demotion(virtual_address, memcg->total_accesses, meta->accesses_per_mig, meta->total_accesses, meta->ltm);
+			    }
+		    }
+		}
 	    }
 	    else {
 		still_hot = cooling_page(page, lruvec_memcg(lruvec));
@@ -800,8 +815,9 @@ static unsigned long cooling_active_list(unsigned long nr_to_scan,
 
 	    if (still_hot == 2) {
 		/* page is still hot after cooling */
-		if (!PageActive(page))
+		if (!PageActive(page)) {
 		    SetPageActive(page);
+		}
 		list_add(&page->lru, &l_active);
 		continue;
 	    } 

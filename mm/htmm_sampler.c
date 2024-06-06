@@ -105,7 +105,7 @@ static int pebs_init(pid_t pid, int node)
     }
     
     printk("pebs_init\n");   
-    for (cpu = 0; cpu < CPUS_PER_SOCKET; cpu+=2) {
+    for (cpu = 0; cpu < CPUS_PER_SOCKET; cpu++) {
 	for (event = 0; event < N_HTMMEVENTS; event++) {
 	    if (get_pebs_event(event) == N_HTMMEVENTS) {
 		mem_event[cpu][event] = NULL;
@@ -127,7 +127,7 @@ static void pebs_disable(void)
     int cpu, event;
 
     printk("pebs disable\n");
-    for (cpu = 0; cpu < CPUS_PER_SOCKET; cpu+=2) {
+    for (cpu = 0; cpu < CPUS_PER_SOCKET; cpu++) {
 	for (event = 0; event < N_HTMMEVENTS; event++) {
 	    if (mem_event && mem_event[cpu] && mem_event[cpu][event])
 		perf_event_disable(mem_event[cpu][event]);
@@ -140,7 +140,7 @@ static void pebs_enable(void)
     int cpu, event;
 
     printk("pebs enable\n");
-    for (cpu = 0; cpu < CPUS_PER_SOCKET; cpu+=2) {
+    for (cpu = 0; cpu < CPUS_PER_SOCKET; cpu++) {
 	for (event = 0; event < N_HTMMEVENTS; event++) {
 	    if (mem_event[cpu][event])
 		perf_event_enable(mem_event[cpu][event]);
@@ -152,7 +152,7 @@ static void pebs_update_period(uint64_t value, uint64_t inst_value)
 {
     int cpu, event;
 
-    for (cpu = 0; cpu < CPUS_PER_SOCKET; cpu+=2) {
+    for (cpu = 0; cpu < CPUS_PER_SOCKET; cpu++) {
 	for (event = 0; event < N_HTMMEVENTS; event++) {
 	    int ret;
 	    if (!mem_event[cpu][event])
@@ -224,7 +224,7 @@ static int ksamplingd(void *data)
 	}
 	*/
 	
-	for (cpu = 0; cpu < CPUS_PER_SOCKET; cpu+=2) {
+	for (cpu = 0; cpu < CPUS_PER_SOCKET; cpu++) {
 	    for (event = 0; event < N_HTMMEVENTS; event++) {
 		do {
 		    struct perf_buffer *rb;
@@ -254,7 +254,7 @@ static int ksamplingd(void *data)
 		    up = READ_ONCE(rb->user_page);
 		    head = READ_ONCE(up->data_head);
 		    if (head == up->data_tail) {
-			if (cpu < 32)
+			if (cpu < 20)
 			    nr_skip++;
 			//continue;
 			break;

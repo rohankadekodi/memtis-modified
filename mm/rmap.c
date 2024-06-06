@@ -983,10 +983,17 @@ static bool cooling_page_one(struct page *page, struct vm_area_struct *vma,
 		hca->memcg->hotness_hg[cur_idx]++;
 		hca->memcg->ebp_hotness_hg[cur_idx]++;
 
-		if (cur_idx >= (hca->memcg->active_threshold - 1))
-		    hca->page_is_hot = 2;
-		else
+		if (cur_idx >= (hca->memcg->active_threshold - 1)) {
+		    hca->page_is_hot = 2; 
+		    if (!PageActive(page)) {
+			    bpf_register_page_add_to_mig_queue_promotion(address, hca->memcg->total_accesses, pginfo->accesses_per_mig, pginfo->total_accesses, pginfo->ltm);
+		    }
+		} else {
 		    hca->page_is_hot = 1;
+		    if (PageActive(page)) {
+			    bpf_register_page_add_to_mig_queue_demotion(address, hca->memcg->total_accesses, pginfo->accesses_per_mig, pginfo->total_accesses, pginfo->ltm);
+		    }
+		}
 		if (get_idx(prev_accessed) >= (hca->memcg->bp_active_threshold))
 		    pginfo->may_hot = true;
 		else
