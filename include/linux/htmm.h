@@ -117,10 +117,10 @@ extern void bpf_register_cooling(unsigned long address, unsigned long total_acce
 extern void bpf_register_adaptation(unsigned long warm_idx, unsigned long hot_idx, unsigned long total_accesses);
 extern void bpf_register_page_alloc(unsigned long virtual_address, unsigned long hugepage, unsigned long total_accesses);
 extern void bpf_register_page_add_to_mig_queue_promotion(unsigned long virtual_address,
-		unsigned long total_accesses, unsigned long accesses_per_mig,
+		unsigned long total_accesses, unsigned long do_migration,
 		unsigned long stm, unsigned long ltm);
 extern void bpf_register_page_add_to_mig_queue_demotion(unsigned long virtual_address,
-		unsigned long total_accesses, unsigned long accesses_per_mig,
+		unsigned long total_accesses, unsigned long do_migration,
 		unsigned long stm, unsigned long ltm);
 
 extern bool deferred_split_huge_page_for_htmm(struct page *page);
@@ -155,22 +155,70 @@ extern void ksamplingd_exit(void);
 extern int process_pid;
 extern void *memcg;
 
-static inline unsigned long decide_ltm_stm(unsigned long stm_accesses, unsigned long ltm_accesses, unsigned long htmm_mode)
+static inline bool decide_ltm_stm(unsigned long stm_accesses, unsigned long ltm_accesses, unsigned long htmm_mode)
 {
 	if (htmm_mode == HTMM_LSTM) {
-		if ((stm_accesses * 3) < (3 * ltm_accesses) &&
+		if ((stm_accesses * 3) < (ltm_accesses) &&
 			(stm_accesses * 15) > ltm_accesses) {
 
-			return (unsigned long)(ltm_accesses / 9);
+			return true; 
+			//return (unsigned long)(ltm_accesses / 9);
 		}
-		return stm_accesses;
+		return false;
+		//return stm_accesses;
 	}
-	return stm_accesses;
+	return false;
+	//return stm_accesses;
 }
 
 static inline unsigned long update_ltm(unsigned long current_ltm)
 {
 	return ((current_ltm * 9) / 10);
+}
+
+
+static inline void inspect_page_migration_lock(pginfo_t *pginfo, int htmm_mode)
+{
+	bool stay_locked = false;
+	bool use_ltm = false;
+	if (htmm_mode == HTMM_LSTM) {
+		if (pginfo->do_migration == false) {
+			stay_locked = decide_ltm_stm(pginfo->total_accesses, pginfo->ltm_when_locked, htmm_mode);
+			if (!stay_locked) {
+				pginfo->do_migration = true;	
+			}
+		} else {
+			use_ltm = decide_ltm_stm(pginfo->total_accesses, pginfo->ltm, htmm_mode);
+			if (use_ltm) {
+				pginfo->do_migration = false;
+				pginfo->ltm_when_locked = pginfo->ltm;
+			}	
+		}
+	} else {
+		pginfo->do_migration = true;
+	}
+}
+
+static inline void inspect_hugepage_migration_lock(struct page *meta_page, int htmm_mode)
+{
+	bool stay_locked = false;
+	bool use_ltm = false;
+	if (htmm_mode == HTMM_LSTM) {
+		if (meta_page->do_migration == false) {
+			stay_locked = decide_ltm_stm(meta_page->total_accesses, meta_page->ltm_when_locked, htmm_mode);
+			if (!stay_locked) {
+				meta_page->do_migration = true;	
+			}
+		} else {
+			use_ltm = decide_ltm_stm(meta_page->total_accesses, meta_page->ltm, htmm_mode);
+			if (use_ltm) {
+				meta_page->do_migration = false;
+				meta_page->ltm_when_locked = meta_page->ltm;
+			}	
+		}
+	} else {
+		meta_page->do_migration = true;
+	}
 }
 
 static inline unsigned long get_sample_period(unsigned long cur) {
@@ -247,4 +295,5 @@ extern int kmigraterd_init(void);
 extern void kmigraterd_stop(void);
 extern void bpf_demotion_loop_hook(unsigned long demotion_ctr, unsigned long nr_reclaimed); 
 extern void bpf_promotion_loop_hook(unsigned long promotion_ctr, unsigned long nr_promoted); 
+extern void __adjust_active_threshold(struct mem_cgroup *memcg);
 

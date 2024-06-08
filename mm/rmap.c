@@ -914,6 +914,10 @@ struct htmm_cooling_arg {
     struct mem_cgroup *memcg;
 };
 
+struct htmm_do_migration_page_arg {
+	bool do_migration;
+};
+
 struct htmm_virtual_address_arg {
     /*
      * page_is_hot: 0 --> already cooled.
@@ -977,8 +981,12 @@ static bool cooling_page_one(struct page *page, struct vm_area_struct *vma,
 		    //pginfo->ltm = (uint32_t)(pginfo->ltm * 3 / 4);
 		}
 
-		accesses = decide_ltm_stm(pginfo->total_accesses, pginfo->ltm, htmm_mode);
-		//accesses = pginfo->total_accesses;
+		//accesses = decide_ltm_stm(pginfo->total_accesses, pginfo->ltm, htmm_mode);
+		accesses = pginfo->total_accesses;
+		if (decide_ltm_stm(pginfo->total_accesses, pginfo->ltm, htmm_mode)) {
+			accesses = pginfo->ltm / 9;
+		}
+		inspect_page_migration_lock(pginfo, htmm_mode);
 		cur_idx = get_idx(accesses);
 		hca->memcg->hotness_hg[cur_idx]++;
 		hca->memcg->ebp_hotness_hg[cur_idx]++;
@@ -986,12 +994,12 @@ static bool cooling_page_one(struct page *page, struct vm_area_struct *vma,
 		if (cur_idx >= (hca->memcg->active_threshold - 1)) {
 		    hca->page_is_hot = 2; 
 		    if (!PageActive(page)) {
-			    bpf_register_page_add_to_mig_queue_promotion(address, hca->memcg->total_accesses, pginfo->accesses_per_mig, pginfo->total_accesses, pginfo->ltm);
+			    bpf_register_page_add_to_mig_queue_promotion(address, hca->memcg->total_accesses, /*pginfo->accesses_per_mig,*/ true, pginfo->total_accesses, pginfo->ltm);
 		    }
 		} else {
 		    hca->page_is_hot = 1;
 		    if (PageActive(page)) {
-			    bpf_register_page_add_to_mig_queue_demotion(address, hca->memcg->total_accesses, pginfo->accesses_per_mig, pginfo->total_accesses, pginfo->ltm);
+			    bpf_register_page_add_to_mig_queue_demotion(address, hca->memcg->total_accesses, /*pginfo->accesses_per_mig,*/ true,  pginfo->total_accesses, pginfo->ltm);
 		    }
 		}
 		if (get_idx(prev_accessed) >= (hca->memcg->bp_active_threshold))
@@ -1067,8 +1075,12 @@ static bool page_check_hotness_one(struct page *page, struct vm_area_struct *vma
 	    if (!pginfo)
 		continue;
 	    
-	    accesses = decide_ltm_stm(pginfo->total_accesses, pginfo->ltm, htmm_mode);
-	    //accesses = pginfo->total_accesses;
+	    //accesses = decide_ltm_stm(pginfo->total_accesses, pginfo->ltm, htmm_mode);
+	    accesses = pginfo->total_accesses;
+	    if (decide_ltm_stm(pginfo->total_accesses, pginfo->ltm, htmm_mode)) {
+		    accesses = pginfo->ltm / 9;
+	    }
+	    inspect_page_migration_lock(pginfo, htmm_mode);
 	    cur_idx = get_idx(accesses);
 	    if (cur_idx >= hca->memcg->active_threshold)
 		hca->page_is_hot = 2;
@@ -1133,8 +1145,12 @@ static bool get_pginfo_idx_one(struct page *page, struct vm_area_struct *vma,
 	    if (!pginfo)
 		continue;
 	    
-	    accesses = decide_ltm_stm(pginfo->total_accesses, pginfo->ltm, htmm_mode);
-	    //accesses = pginfo->total_accesses;
+	    //accesses = decide_ltm_stm(pginfo->total_accesses, pginfo->ltm, htmm_mode);
+	    accesses = pginfo->total_accesses;
+	    if (decide_ltm_stm(pginfo->total_accesses, pginfo->ltm, htmm_mode)) {
+		    accesses = pginfo->ltm / 9;
+	    }
+	    inspect_page_migration_lock(pginfo, htmm_mode);
 	    cur_idx = get_idx(accesses);
 	    hca->page_is_hot = cur_idx;
 	} else if (pvmw.pmd) {
@@ -1222,6 +1238,66 @@ unsigned long get_pginfo_ltm_accesses(struct page *page)
     return hca.lifetime_accesses;
 }
 
+static bool get_pginfo_do_migration_one(struct page *page, struct vm_area_struct *vma,
+	unsigned long address, void *arg)
+{
+    struct htmm_do_migration_page_arg *hca = arg;
+    struct page_vma_mapped_walk pvmw = {
+	.page = page,
+	.vma = vma,
+	.address = address,
+    };
+    pginfo_t *pginfo;
+
+    while (page_vma_mapped_walk(&pvmw)) {
+	address = pvmw.address;
+	page = pvmw.page;
+
+	if (pvmw.pte) {
+	    struct page *pte_page;
+	    unsigned long cur_idx;
+	    pte_t *pte = pvmw.pte;
+
+	    pte_page = virt_to_page((unsigned long)pte);
+	    if (!PageHtmm(pte_page))
+		continue;
+
+	    pginfo = get_pginfo_from_pte(pte);
+	    if (!pginfo)
+		continue;
+	    
+	    //hca->lifetime_accesses = pginfo->accesses_per_mig;
+	    hca->do_migration = pginfo->do_migration;
+	    //pginfo->accesses_per_mig = 0;
+
+	} else if (pvmw.pmd) {
+	    hca->do_migration = false;
+	}
+    }
+
+    return true;
+}
+
+bool get_pginfo_do_migration(struct page *page)
+{
+    struct htmm_do_migration_page_arg hca = {
+	.do_migration = false,
+    };
+    struct rmap_walk_control rwc = {
+	.rmap_one = get_pginfo_do_migration_one,
+	.arg = (void *)&hca,
+    };
+
+    if (!PageAnon(page) || PageKsm(page))
+	return -1;
+
+    if (!page_mapped(page))
+	return -1;
+
+    rmap_walk(page, &rwc);
+    return hca.do_migration;
+}
+
 static bool get_pginfo_accesses_per_mig_one(struct page *page, struct vm_area_struct *vma,
 	unsigned long address, void *arg)
 {
@@ -1250,8 +1326,9 @@ static bool get_pginfo_accesses_per_mig_one(struct page *page, struct vm_area_st
 	    if (!pginfo)
 		continue;
 	    
-	    hca->lifetime_accesses = pginfo->accesses_per_mig;
-	    pginfo->accesses_per_mig = 0;
+	    //hca->lifetime_accesses = pginfo->accesses_per_mig;
+	    hca->lifetime_accesses = 0;
+	    //pginfo->accesses_per_mig = 0;
 
 	} else if (pvmw.pmd) {
 	    hca->lifetime_accesses = 0;

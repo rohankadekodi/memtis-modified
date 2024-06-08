@@ -282,7 +282,7 @@ typedef struct pgprot { pgprotval_t pgprot; } pgprot_t;
 typedef struct { pgdval_t pgd; } pgd_t;
 
 #ifdef CONFIG_HTMM /* pginfo_t */
-typedef struct { uint32_t total_accesses; uint16_t nr_accesses; uint8_t cooling_clock; bool may_hot; uint32_t ltm; uint32_t accesses_per_mig; } pginfo_t;
+typedef struct { uint32_t total_accesses; uint8_t nr_accesses; uint8_t cooling_clock; bool may_hot; uint32_t ltm; uint8_t do_migration; uint32_t ltm_when_locked; } pginfo_t;
 //typedef struct { uint32_t total_accesses; uint16_t nr_accesses; uint8_t cooling_clock; bool may_hot; } pginfo_t;
 #endif
 

@@ -427,16 +427,25 @@ static unsigned long shrink_page_list(struct list_head *page_list,
 
 		if (meta->idx >= memcg->warm_threshold)
 		    goto keep_locked;
+
+		//if (!meta->do_migration)
+		//	goto keep_locked;
+
 		huge_page = 1;
 		page_idx = meta->idx;
 		lifetime_accesses = meta->total_accesses;
 	    } else {
 		unsigned int idx = get_pginfo_idx(page);
+		//bool do_migration = get_pginfo_do_migration(page);
 		page_idx = idx;
 		lifetime_accesses = get_pginfo_lifetime_accesses(page);
 
 		if (idx >= memcg->warm_threshold)
 		    goto keep_locked;
+
+		//if (!do_migration)
+		//	goto keep_locked;
+
 
 		huge_page = 0;
 	    }
@@ -510,7 +519,10 @@ static unsigned long promote_page_list(struct list_head *page_list,
 		}
 		*/
 		lifetime_accesses = meta->total_accesses;
+		//if (!meta->do_migration)
+		//	goto __keep_locked;
 	} else {
+		//bool do_migration = get_pginfo_do_migration(page);
 		huge_page = 0;
 		page_idx = get_pginfo_idx(page);
 		/*
@@ -519,6 +531,8 @@ static unsigned long promote_page_list(struct list_head *page_list,
 		}
 		*/
 		lifetime_accesses = get_pginfo_lifetime_accesses(page);
+		//if (!do_migration)
+		//	goto __keep_locked;
 	}
 	unsigned long virtual_address = get_page_virtual_address(page);
 	//bpf_promotion_page_info(virtual_address, lifetime_accesses, page_idx, (unsigned long) huge_page, promotion_ctr, page_promotion_ctr++);
@@ -795,7 +809,7 @@ static unsigned long cooling_active_list(unsigned long nr_to_scan,
 		    if (!PageActive(page)) {
 			    virtual_address = get_page_virtual_address(page);
 			    if (virtual_address != 1) {
-				    bpf_register_page_add_to_mig_queue_promotion(virtual_address, memcg->total_accesses, meta->accesses_per_mig, meta->total_accesses, meta->ltm);
+				    bpf_register_page_add_to_mig_queue_promotion(virtual_address, memcg->total_accesses, meta->do_migration, meta->total_accesses, meta->ltm);
 			    }
 		    }
 		}
@@ -804,7 +818,7 @@ static unsigned long cooling_active_list(unsigned long nr_to_scan,
 		    if (PageActive(page)) {
 			    virtual_address = get_page_virtual_address(page);
 			    if (virtual_address != 1) {
-				    bpf_register_page_add_to_mig_queue_demotion(virtual_address, memcg->total_accesses, meta->accesses_per_mig, meta->total_accesses, meta->ltm);
+				    bpf_register_page_add_to_mig_queue_demotion(virtual_address, memcg->total_accesses, meta->do_migration, meta->total_accesses, meta->ltm);
 			    }
 		    }
 		}

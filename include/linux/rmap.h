@@ -197,6 +197,7 @@ int get_pginfo_idx(struct page *page);
 unsigned long get_pginfo_lifetime_accesses(struct page *page);
 unsigned long get_pginfo_ltm_accesses(struct page *page);
 unsigned long get_pginfo_accesses_per_mig(struct page *page);
+bool get_pginfo_do_migration(struct page *page);
 unsigned long get_page_virtual_address(struct page *page);
 #endif
 void try_to_migrate(struct page *page, enum ttu_flags flags);

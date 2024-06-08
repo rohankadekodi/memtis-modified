@@ -2153,11 +2153,17 @@ static void __split_huge_pmd_locked(struct vm_area_struct *vma, pmd_t *pmd,
 		pte_pginfo->nr_accesses = tail_pginfo->nr_accesses;
 		pte_pginfo->total_accesses = tail_pginfo->total_accesses;
 		pte_pginfo->ltm = tail_pginfo->ltm;
-		pte_pginfo->accesses_per_mig = tail_pginfo->accesses_per_mig;
+		pte_pginfo->ltm_when_locked = tail_pginfo->ltm_when_locked;
+		pte_pginfo->do_migration = tail_pginfo->do_migration;
+		//pte_pginfo->accesses_per_mig = tail_pginfo->accesses_per_mig;
 		pte_pginfo->cooling_clock = tail_pginfo->cooling_clock;
 		
-		accesses = decide_ltm_stm(pte_pginfo->total_accesses, pte_pginfo->ltm, htmm_mode);
-		//accesses = pte_pginfo->total_accesses;
+		//accesses = decide_ltm_stm(pte_pginfo->total_accesses, pte_pginfo->ltm, htmm_mode);
+		accesses = pte_pginfo->total_accesses;
+		if (decide_ltm_stm(pte_pginfo->total_accesses, pte_pginfo->ltm, htmm_mode)) {
+			accesses = pte_pginfo->ltm / 9;
+		}
+		inspect_page_migration_lock(pte_pginfo, htmm_mode);
 		cur_idx = get_idx(accesses);
 		if (get_idx(cur_idx) >= (memcg->active_threshold - 1))
 		    SetPageActive(&page[i]);
