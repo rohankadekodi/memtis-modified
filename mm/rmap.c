@@ -994,12 +994,12 @@ static bool cooling_page_one(struct page *page, struct vm_area_struct *vma,
 		if (cur_idx >= (hca->memcg->active_threshold - 1)) {
 		    hca->page_is_hot = 2; 
 		    if (!PageActive(page)) {
-			    bpf_register_page_add_to_mig_queue_promotion(address, hca->memcg->total_accesses, /*pginfo->accesses_per_mig,*/ true, pginfo->total_accesses, pginfo->ltm);
+			    bpf_register_page_add_to_mig_queue_promotion(address, phase_num, /*pginfo->accesses_per_mig,*/ true, pginfo->total_accesses, pginfo->ltm);
 		    }
 		} else {
 		    hca->page_is_hot = 1;
 		    if (PageActive(page)) {
-			    bpf_register_page_add_to_mig_queue_demotion(address, hca->memcg->total_accesses, /*pginfo->accesses_per_mig,*/ true,  pginfo->total_accesses, pginfo->ltm);
+			    bpf_register_page_add_to_mig_queue_demotion(address, phase_num, /*pginfo->accesses_per_mig,*/ true,  pginfo->total_accesses, pginfo->ltm);
 		    }
 		}
 		if (get_idx(prev_accessed) >= (hca->memcg->bp_active_threshold))
@@ -1236,6 +1236,73 @@ unsigned long get_pginfo_ltm_accesses(struct page *page)
 
     rmap_walk(page, &rwc);
     return hca.lifetime_accesses;
+}
+
+static bool check_set_pginfo_lock_page_one(struct page *page, struct vm_area_struct *vma,
+	unsigned long address, void *arg)
+{
+    bool lock_page = false;
+    struct htmm_do_migration_page_arg *hca = arg;
+    struct page_vma_mapped_walk pvmw = {
+	.page = page,
+	.vma = vma,
+	.address = address,
+    };
+    pginfo_t *pginfo;
+
+    while (page_vma_mapped_walk(&pvmw)) {
+	address = pvmw.address;
+	page = pvmw.page;
+
+	if (pvmw.pte) {
+	    struct page *pte_page;
+	    unsigned long cur_idx;
+	    pte_t *pte = pvmw.pte;
+
+	    pte_page = virt_to_page((unsigned long)pte);
+	    if (!PageHtmm(pte_page))
+		continue;
+
+	    pginfo = get_pginfo_from_pte(pte);
+	    if (!pginfo)
+		continue;
+
+	    lock_page = decide_ltm_stm(pginfo->total_accesses, pginfo->ltm, htmm_mode);
+	    if (lock_page) {
+		    pginfo->do_migration = false;
+		    pginfo->ltm_when_locked = pginfo->ltm;
+	    }
+	    
+	    //hca->lifetime_accesses = pginfo->accesses_per_mig;
+	    hca->do_migration = pginfo->do_migration;
+	    //pginfo->accesses_per_mig = 0;
+
+	} else if (pvmw.pmd) {
+	    hca->do_migration = false;
+	}
+    }
+
+    return true;
+}
+
+bool check_set_pginfo_lock_page(struct page *page)
+{
+    struct htmm_do_migration_page_arg hca = {
+	.do_migration = false,
+    };
+    struct rmap_walk_control rwc = {
+	.rmap_one = check_set_pginfo_lock_page_one,
+	.arg = (void *)&hca,
+    };
+
+    if (!PageAnon(page) || PageKsm(page))
+	return -1;
+
+    if (!page_mapped(page))
+	return -1;
+
+    rmap_walk(page, &rwc);
+    return hca.do_migration;
 }
 
 static bool get_pginfo_do_migration_one(struct page *page, struct vm_area_struct *vma,

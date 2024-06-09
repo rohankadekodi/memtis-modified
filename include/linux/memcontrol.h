@@ -405,6 +405,7 @@ struct mem_cgroup {
 };
 
 extern struct mem_cgroup *htmm_memcg;
+extern unsigned long long phase_num;
 
 /*
  * size of first charge trial. "32" comes from vmscan.c's magic value.

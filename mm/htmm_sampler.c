@@ -17,6 +17,7 @@ struct task_struct *access_sampling = NULL;
 struct perf_event ***mem_event;
 int process_pid = -2;
 struct mem_cgroup *htmm_memcg = NULL;
+unsigned long long phase_num = 0;
 
 static bool valid_va(unsigned long addr)
 {

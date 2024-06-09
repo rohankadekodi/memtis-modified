@@ -1579,9 +1579,11 @@ noinline void bpf_demotion_page_info(unsigned long page_pointer, unsigned int pa
 noinline void bpf_promotion_page_info(unsigned long page_pointer, unsigned int page_idx, unsigned long ltm_accesses, unsigned long accesses_before_mig, unsigned long total_accesses)
 {
 	// Do nothing
+	/*
 	if (total_accesses == 0) {
 		printk(KERN_INFO "%s: total accesses is 0\n", __func__);
 	}
+	*/
 	BUG_ON(page_pointer == 0);
 }
 
@@ -1774,7 +1776,7 @@ retry:
 			case MIGRATEPAGE_SUCCESS:
 				if (from_htmm) {
 					if (htmm_memcg) {
-						total_accesses = htmm_memcg->total_accesses;	
+						total_accesses = phase_num;	
 					}
 					if (is_thp) {
 						nr_thp_succeeded++;

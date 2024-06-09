@@ -177,7 +177,7 @@ static inline unsigned long update_ltm(unsigned long current_ltm)
 }
 
 
-static inline void inspect_page_migration_lock(pginfo_t *pginfo, int htmm_mode)
+static inline bool inspect_page_migration_lock(pginfo_t *pginfo, int htmm_mode)
 {
 	bool stay_locked = false;
 	bool use_ltm = false;
@@ -188,18 +188,21 @@ static inline void inspect_page_migration_lock(pginfo_t *pginfo, int htmm_mode)
 				pginfo->do_migration = true;	
 			}
 		} else {
+			/*
 			use_ltm = decide_ltm_stm(pginfo->total_accesses, pginfo->ltm, htmm_mode);
 			if (use_ltm) {
 				pginfo->do_migration = false;
 				pginfo->ltm_when_locked = pginfo->ltm;
-			}	
+			}
+			*/	
 		}
 	} else {
 		pginfo->do_migration = true;
 	}
+	return pginfo->do_migration;
 }
 
-static inline void inspect_hugepage_migration_lock(struct page *meta_page, int htmm_mode)
+static inline bool inspect_hugepage_migration_lock(struct page *meta_page, int htmm_mode)
 {
 	bool stay_locked = false;
 	bool use_ltm = false;
@@ -210,15 +213,18 @@ static inline void inspect_hugepage_migration_lock(struct page *meta_page, int h
 				meta_page->do_migration = true;	
 			}
 		} else {
+			/*
 			use_ltm = decide_ltm_stm(meta_page->total_accesses, meta_page->ltm, htmm_mode);
 			if (use_ltm) {
 				meta_page->do_migration = false;
 				meta_page->ltm_when_locked = meta_page->ltm;
-			}	
+			}
+			*/	
 		}
 	} else {
 		meta_page->do_migration = true;
 	}
+	return meta_page->do_migration;
 }
 
 static inline unsigned long get_sample_period(unsigned long cur) {
