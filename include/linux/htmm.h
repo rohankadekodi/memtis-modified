@@ -23,6 +23,8 @@
 #define HTMM_HUGEPAGE_OPT_V2	0x3 /* unused */
 #define HTMM_NO_DEMOTION    0x4
 #define HTMM_LSTM	    0x5
+#define HTMM_LSTM_PDLOCK    0x6
+#define HTMM_LSTM_DLOCK     0x7
 
 /**/
 #define DRAM_ACCESS_LATENCY 80
@@ -157,7 +159,7 @@ extern void *memcg;
 
 static inline bool decide_ltm_stm(unsigned long stm_accesses, unsigned long ltm_accesses, unsigned long htmm_mode)
 {
-	if (htmm_mode == HTMM_LSTM) {
+	if (htmm_mode == HTMM_LSTM || htmm_mode == HTMM_LSTM_PDLOCK || htmm_mode == HTMM_LSTM_DLOCK) {
 		if ((stm_accesses * 3) < (ltm_accesses) &&
 			(stm_accesses * 15) > ltm_accesses) {
 
@@ -181,7 +183,7 @@ static inline bool inspect_page_migration_lock(pginfo_t *pginfo, int htmm_mode)
 {
 	bool stay_locked = false;
 	bool use_ltm = false;
-	if (htmm_mode == HTMM_LSTM) {
+	if (htmm_mode == HTMM_LSTM || htmm_mode == HTMM_LSTM_PDLOCK || htmm_mode == HTMM_LSTM_DLOCK) {
 		if (pginfo->do_migration == false) {
 			stay_locked = decide_ltm_stm(pginfo->total_accesses, pginfo->ltm_when_locked, htmm_mode);
 			if (!stay_locked) {
@@ -206,7 +208,7 @@ static inline bool inspect_hugepage_migration_lock(struct page *meta_page, int h
 {
 	bool stay_locked = false;
 	bool use_ltm = false;
-	if (htmm_mode == HTMM_LSTM) {
+	if (htmm_mode == HTMM_LSTM || htmm_mode == HTMM_LSTM_PDLOCK || htmm_mode == HTMM_LSTM_DLOCK) {
 		if (meta_page->do_migration == false) {
 			stay_locked = decide_ltm_stm(meta_page->total_accesses, meta_page->ltm_when_locked, htmm_mode);
 			if (!stay_locked) {

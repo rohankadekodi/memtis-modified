@@ -429,7 +429,7 @@ static unsigned long shrink_page_list(struct list_head *page_list,
 		if (meta->idx >= memcg->warm_threshold)
 		    goto keep_locked;
 
-		if (htmm_mode == HTMM_LSTM) {
+		if (htmm_mode == HTMM_LSTM_PDLOCK || htmm_mode == HTMM_LSTM_DLOCK) {
 			lock_page = decide_ltm_stm(meta->total_accesses, meta->ltm, htmm_mode);
 			if (lock_page) {
 				meta->do_migration = false;
@@ -453,7 +453,7 @@ static unsigned long shrink_page_list(struct list_head *page_list,
 		if (idx >= memcg->warm_threshold)
 		    goto keep_locked;
 
-		if (htmm_mode == HTMM_LSTM) {
+		if (htmm_mode == HTMM_LSTM_PDLOCK || htmm_mode == HTMM_LSTM_DLOCK) {
 			check_set_pginfo_lock_page(page);
 			/*
 			if (!do_migration)
@@ -530,7 +530,7 @@ static unsigned long promote_page_list(struct list_head *page_list,
 		huge_page = 1;
 		page_idx = meta->idx;
 		lifetime_accesses = meta->total_accesses;
-		if (htmm_mode == HTMM_LSTM) {
+		if (htmm_mode == HTMM_LSTM_PDLOCK) {
 			lock_page = decide_ltm_stm(meta->total_accesses, meta->ltm, htmm_mode);
 			if (lock_page) {
 				meta->do_migration = false;
@@ -546,7 +546,7 @@ static unsigned long promote_page_list(struct list_head *page_list,
 		huge_page = 0;
 		page_idx = get_pginfo_idx(page);
 		lifetime_accesses = get_pginfo_lifetime_accesses(page);
-		if (htmm_mode == HTMM_LSTM) {
+		if (htmm_mode == HTMM_LSTM_PDLOCK) {
 			check_set_pginfo_lock_page(page);
 			/*
 			if (!do_migration)

@@ -3539,17 +3539,21 @@ static ssize_t htmm_mode_show(struct kobject *kobj,
 			      struct kobj_attribute *attr, char *buf)
 {
 	if (htmm_mode == HTMM_NO_MIG)
-		return sysfs_emit(buf, "%s\n", "[NO MIG-0], BASELINE-1, HUGEPAGE_OPT-2, HUGEPAGE_OPT_V2-3, NO DEMOTION-4, LSTM-5");
+		return sysfs_emit(buf, "%s\n", "[NO MIG-0], BASELINE-1, HUGEPAGE_OPT-2, HUGEPAGE_OPT_V2-3, NO DEMOTION-4, LSTM-5, LSTM_PDLOCK-6, LSTM_DLOCK-7");
 	else if (htmm_mode == HTMM_BASELINE)
-		return sysfs_emit(buf, "%s\n", "NO MIG-0, [BASELINE-1], HUGEPAGE_OPT-2, HUGEPAGE_OPT_V2, NO DEMOTION-4, LSTM-5");
+		return sysfs_emit(buf, "%s\n", "NO MIG-0, [BASELINE-1], HUGEPAGE_OPT-2, HUGEPAGE_OPT_V2, NO DEMOTION-4, LSTM-5, LSTM_PDLOCK-6, LSTM_DLOCK-7");
 	else if (htmm_mode == HTMM_HUGEPAGE_OPT)
-		return sysfs_emit(buf, "%s\n", "NO MIG-0, BASELINE-1, [HUGEPAGE_OPT-2], HUGEPAGE_OPT_V2-3, NO DEMOTION-4, LSTM-5");
+		return sysfs_emit(buf, "%s\n", "NO MIG-0, BASELINE-1, [HUGEPAGE_OPT-2], HUGEPAGE_OPT_V2-3, NO DEMOTION-4, LSTM-5, LSTM_PDLOCK-6, LSTM_DLOCK-7");
 	else if (htmm_mode == HTMM_HUGEPAGE_OPT_V2)/* htmm_mode == HTMM_HUGEPAGE_OPT_V2 */
-		return sysfs_emit(buf, "%s\n", "NO MIG-0, BASELINE-1, HUGEPAGE_OPT-2, [HUGEPAGE_OPT_V2-3], NO DEMOTION-4, LSTM-5");
+		return sysfs_emit(buf, "%s\n", "NO MIG-0, BASELINE-1, HUGEPAGE_OPT-2, [HUGEPAGE_OPT_V2-3], NO DEMOTION-4, LSTM-5, LSTM_PDLOCK-6, LSTM_DLOCK-7");
 	else if (htmm_mode == HTMM_NO_DEMOTION)/* htmm_mode == HTMM_NO_DEMOTION */
-		return sysfs_emit(buf, "%s\n", "NO MIG-0, BASELINE-1, HUGEPAGE_OPT-2, HUGEPAGE_OPT_V2, [NO DEMOTION-4], LSTM-5");
-	else /* htmm_mode == HTMM_LSTM */
-		return sysfs_emit(buf, "%s\n", "NO MIG-0, BASELINE-1, HUGEPAGE_OPT-2, HUGEPAGE_OPT_V2, NO DEMOTION-4, [LSTM-5]");
+		return sysfs_emit(buf, "%s\n", "NO MIG-0, BASELINE-1, HUGEPAGE_OPT-2, HUGEPAGE_OPT_V2, [NO DEMOTION-4], LSTM-5, LSTM_PDLOCK-6, LSTM_DLOCK-7");
+	else if (htmm_mode == HTMM_LSTM)/* htmm_mode == HTMM_LSTM */
+		return sysfs_emit(buf, "%s\n", "NO MIG-0, BASELINE-1, HUGEPAGE_OPT-2, HUGEPAGE_OPT_V2, NO DEMOTION-4, [LSTM-5], LSTM_PDLOCK-6, LSTM_DLOCK-7");
+	else if (htmm_mode == HTMM_LSTM_PDLOCK)/* htmm_mode == HTMM_LSTM_PDLOCK */
+		return sysfs_emit(buf, "%s\n", "NO MIG-0, BASELINE-1, HUGEPAGE_OPT-2, HUGEPAGE_OPT_V2, NO DEMOTION-4, LSTM-5, [LSTM_PDLOCK-6], LSTM_DLOCK-7");
+	else /* htmm_mode == HTMM_LSTM_DLOCK */
+		return sysfs_emit(buf, "%s\n", "NO MIG-0, BASELINE-1, HUGEPAGE_OPT-2, HUGEPAGE_OPT_V2, NO DEMOTION-4, LSTM-5, LSTM_PDLOCK-6, [LSTM_DLOCK-7]");
 }
 
 static ssize_t htmm_mode_store(struct kobject *kobj,
@@ -3570,6 +3574,8 @@ static ssize_t htmm_mode_store(struct kobject *kobj,
 		case HTMM_HUGEPAGE_OPT_V2:
 		case HTMM_NO_DEMOTION:
 		case HTMM_LSTM:
+		case HTMM_LSTM_PDLOCK:
+		case HTMM_LSTM_DLOCK:
 			WRITE_ONCE(htmm_mode, mode);
 			break;
 		default:

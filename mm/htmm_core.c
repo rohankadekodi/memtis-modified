@@ -1013,7 +1013,9 @@ static void update_base_page(struct vm_area_struct *vma,
     if (decide_ltm_stm(pginfo->total_accesses, pginfo->ltm, htmm_mode)) {
 	    accesses = pginfo->ltm / 9;
     }
-    page_unlocked = inspect_page_migration_lock(pginfo, htmm_mode);
+    if (htmm_mode == HTMM_LSTM_PDLOCK || htmm_mode == HTMM_LSTM_DLOCK) {
+	    page_unlocked = inspect_page_migration_lock(pginfo, htmm_mode);
+    }
     cur_idx = get_idx(accesses);
     if (htmm_cxl_mode) {
 	    if (page_to_nid(page) == 0)
@@ -1111,7 +1113,10 @@ static void update_huge_page(struct vm_area_struct *vma, pmd_t *pmd,
     if (decide_ltm_stm(pginfo->total_accesses, pginfo->ltm, htmm_mode)) {
 	    accesses = pginfo->ltm / 9;
     }
-    page_unlocked = inspect_page_migration_lock(pginfo, htmm_mode);
+
+    if (htmm_mode == HTMM_LSTM_PDLOCK || htmm_mode == HTMM_LSTM_DLOCK) {
+	    page_unlocked = inspect_page_migration_lock(pginfo, htmm_mode);
+    }
 
     cur_idx = get_idx(accesses);
     spin_lock(&memcg->access_lock);
@@ -1451,8 +1456,9 @@ void __adjust_active_threshold(struct mem_cgroup *memcg)
     if (idx_hot != 15)
 	idx_hot++;
 
-    if (nr_active < (max_nr_pages * 75 / 100))
-	need_warm = true;
+    need_warm = true;
+    //if (nr_active < (max_nr_pages * 75 / 100))
+	//need_warm = true;
 
     /* for the estimated base page histogram */
     nr_active = 0;
@@ -1672,7 +1678,7 @@ void update_pginfo(pid_t pid, unsigned long address, enum events e)
     }
 
     /* threshold adaptation */
-    else if (memcg->nr_sampled % htmm_adaptation_period == 0) {
+    if (memcg->nr_sampled % htmm_adaptation_period == 0) {
 	    __adjust_active_threshold(memcg);
     }
 
