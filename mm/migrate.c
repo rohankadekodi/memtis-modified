@@ -1552,27 +1552,33 @@ void reset_page_demotion_ctr()
 noinline void bpf_huge_demotion_page_info(unsigned long page_pointer, unsigned int page_idx, unsigned long ltm_accesses, unsigned long accesses_before_mig, unsigned long total_accesses)
 {
 	// Do nothing
+	/*
 	if (total_accesses == 0) {
 		printk(KERN_INFO "%s: total accesses is 0\n", __func__);
 	}
+	*/
 	BUG_ON(page_pointer == 0);
 }
 
 noinline void bpf_huge_promotion_page_info(unsigned long page_pointer, unsigned int page_idx, unsigned long ltm_accesses, unsigned long accesses_before_mig, unsigned long total_accesses)
 {
 	// Do nothing
+	/*
 	if (total_accesses == 0) {
 		printk(KERN_INFO "%s: total accesses is 0\n", __func__);
 	}
+	*/
 	BUG_ON(page_pointer == 0);
 }
 
 noinline void bpf_demotion_page_info(unsigned long page_pointer, unsigned int page_idx, unsigned long ltm_accesses, unsigned long accesses_before_mig, unsigned long total_accesses)
 {
 	// Do nothing
+	/*
 	if (total_accesses == 0) {
 		printk(KERN_INFO "%s: total accesses is 0\n", __func__);
 	}
+	*/
 	BUG_ON(page_pointer == 0);
 }
 
