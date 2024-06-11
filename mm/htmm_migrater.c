@@ -429,23 +429,21 @@ static unsigned long shrink_page_list(struct list_head *page_list,
 		if (meta->idx >= memcg->warm_threshold)
 		    goto keep_locked;
 
+		/*
 		if (htmm_mode == HTMM_LSTM_PDLOCK || htmm_mode == HTMM_LSTM_DLOCK) {
 			lock_page = decide_ltm_stm(meta->total_accesses, meta->ltm, htmm_mode);
 			if (lock_page) {
 				meta->do_migration = false;
 				meta->ltm_when_locked = meta->ltm;
 			}
-			/*
-			if (!meta->do_migration)
-				goto keep_locked;
-			*/
 		}
+	    	*/
 
 		huge_page = 1;
 		page_idx = meta->idx;
-		lifetime_accesses = meta->total_accesses;
+		lifetime_accesses = meta->recent_accesses;
 	    } else {
-		unsigned int idx = get_pginfo_idx(page);
+		unsigned int idx = get_pginfo_idx(page, memcg);
 		bool do_migration = get_pginfo_do_migration(page);
 		page_idx = idx;
 		lifetime_accesses = get_pginfo_lifetime_accesses(page);
@@ -453,13 +451,11 @@ static unsigned long shrink_page_list(struct list_head *page_list,
 		if (idx >= memcg->warm_threshold)
 		    goto keep_locked;
 
+		/*
 		if (htmm_mode == HTMM_LSTM_PDLOCK || htmm_mode == HTMM_LSTM_DLOCK) {
 			check_set_pginfo_lock_page(page);
-			/*
-			if (!do_migration)
-				goto keep_locked;
-			*/
 		}
+		*/
 
 
 		huge_page = 0;
@@ -529,6 +525,7 @@ static unsigned long promote_page_list(struct list_head *page_list,
 		struct page *meta = get_meta_page(page);
 		huge_page = 1;
 		page_idx = meta->idx;
+		/*
 		lifetime_accesses = meta->total_accesses;
 		if (htmm_mode == HTMM_LSTM_PDLOCK) {
 			lock_page = decide_ltm_stm(meta->total_accesses, meta->ltm, htmm_mode);
@@ -536,23 +533,18 @@ static unsigned long promote_page_list(struct list_head *page_list,
 				meta->do_migration = false;
 				meta->ltm_when_locked = meta->ltm;
 			}
-			/*
-			if (!meta->do_migration)
-				goto __keep_locked;
-			*/
 		}
+		*/
 	} else {
 		bool do_migration = get_pginfo_do_migration(page);
 		huge_page = 0;
+		/*
 		page_idx = get_pginfo_idx(page);
 		lifetime_accesses = get_pginfo_lifetime_accesses(page);
 		if (htmm_mode == HTMM_LSTM_PDLOCK) {
 			check_set_pginfo_lock_page(page);
-			/*
-			if (!do_migration)
-				goto __keep_locked;
-			*/
 		}
+		*/
 	}
 	unsigned long virtual_address = get_page_virtual_address(page);
 	//bpf_promotion_page_info(virtual_address, lifetime_accesses, page_idx, (unsigned long) huge_page, promotion_ctr, page_promotion_ctr++);
@@ -829,7 +821,7 @@ static unsigned long cooling_active_list(unsigned long nr_to_scan,
 		    if (!PageActive(page)) {
 			    virtual_address = get_page_virtual_address(page);
 			    if (virtual_address != 1) {
-				    bpf_register_page_add_to_mig_queue_promotion(virtual_address, phase_num, meta->do_migration, meta->total_accesses, meta->ltm);
+				    bpf_register_page_add_to_mig_queue_promotion(virtual_address, phase_num, meta->recent_accesses, meta->bottom_accesses);
 			    }
 		    }
 		}
@@ -838,7 +830,7 @@ static unsigned long cooling_active_list(unsigned long nr_to_scan,
 		    if (PageActive(page)) {
 			    virtual_address = get_page_virtual_address(page);
 			    if (virtual_address != 1) {
-				    bpf_register_page_add_to_mig_queue_demotion(virtual_address, phase_num, meta->do_migration, meta->total_accesses, meta->ltm);
+				    bpf_register_page_add_to_mig_queue_demotion(virtual_address, phase_num, meta->recent_accesses, meta->bottom_accesses);
 			    }
 		    }
 		}

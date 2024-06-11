@@ -53,10 +53,11 @@ extern int migrate_pages_internal(struct list_head *l, new_page_t new, free_page
 		unsigned int *ret_succeeded, long long migration_ctr, int from_htmm);
 extern void reset_page_promotion_ctr(void);
 extern void reset_page_demotion_ctr(void);
-extern void bpf_demotion_page_info(unsigned long page_pointer, unsigned int page_idx, unsigned long ltm_accesses, unsigned long accesses_before_mig, unsigned long total_accesses);
-extern void bpf_promotion_page_info(unsigned long page_pointer, unsigned int page_idx, unsigned long ltm_accesses, unsigned long accesses_before_mig, unsigned long total_accesses);
-extern void bpf_huge_demotion_page_info(unsigned long page_pointer, unsigned int page_idx, unsigned long ltm_accesses, unsigned long accesses_before_mig, unsigned long total_accesses);
-extern void bpf_huge_promotion_page_info(unsigned long page_pointer, unsigned int page_idx, unsigned long ltm_accesses, unsigned long accesses_before_mig, unsigned long total_accesses);
+extern void bpf_demotion_page_info(unsigned long page_pointer, unsigned int page_idx, unsigned long recent_accesses, unsigned long bottom_accesses, unsigned long total_accesses);
+extern void bpf_promotion_page_info(unsigned long page_pointer, unsigned int page_idx, unsigned long recent_accesses, unsigned long bottom_accesses, unsigned long total_accesses);
+extern void bpf_huge_demotion_page_info(unsigned long page_pointer, unsigned int page_idx, unsigned long recent_accesses, unsigned long bottom_accesses, unsigned long total_accesses);
+extern void bpf_huge_promotion_page_info(unsigned long page_pointer, unsigned int page_idx, unsigned long recent_accesses, unsigned long bottom_accesses, unsigned long total_accesses);
+extern void bpf_log_estimate_values(unsigned long page_pointer, long long estimation, unsigned long htmm_cooling_period, unsigned long last_cooling_sample, unsigned long total_accesses);
 extern struct page *alloc_migration_target(struct page *page, unsigned long private);
 extern int isolate_movable_page(struct page *page, isolate_mode_t mode);
 

@@ -1549,7 +1549,21 @@ void reset_page_demotion_ctr()
 	page_demotion_ctr = 0;
 }
 
-noinline void bpf_huge_demotion_page_info(unsigned long page_pointer, unsigned int page_idx, unsigned long ltm_accesses, unsigned long accesses_before_mig, unsigned long total_accesses)
+noinline void bpf_log_estimate_values(unsigned long page_pointer, long long estimation, unsigned long htmm_cooling_period, unsigned long last_cooling_sample, unsigned long total_accesses)
+{
+	BUG_ON(total_accesses == 0);	
+}
+
+static void compute_estimate(unsigned long page_pointer, unsigned long nr_samples, unsigned long last_cooling_sample, unsigned long recent_accesses, unsigned long bottom_accesses, unsigned long htmm_cooling_period)
+{
+	long long alpha, estimation;
+	unsigned int bucket_idx;
+	alpha = nr_samples - last_cooling_sample; 
+	estimation = bottom_accesses + (recent_accesses - (alpha * (uint64_t)(bottom_accesses) / htmm_cooling_period)) / 2;
+	bpf_log_estimate_values(page_pointer, estimation, htmm_cooling_period, last_cooling_sample, nr_samples);
+}
+
+noinline void bpf_huge_demotion_page_info(unsigned long page_pointer, unsigned int page_idx, unsigned long recent_accesses, unsigned long bottom_accesses, unsigned long total_accesses)
 {
 	// Do nothing
 	/*
@@ -1560,7 +1574,7 @@ noinline void bpf_huge_demotion_page_info(unsigned long page_pointer, unsigned i
 	BUG_ON(page_pointer == 0);
 }
 
-noinline void bpf_huge_promotion_page_info(unsigned long page_pointer, unsigned int page_idx, unsigned long ltm_accesses, unsigned long accesses_before_mig, unsigned long total_accesses)
+noinline void bpf_huge_promotion_page_info(unsigned long page_pointer, unsigned int page_idx, unsigned long recent_accesses, unsigned long bottom_accesses, unsigned long total_accesses)
 {
 	// Do nothing
 	/*
@@ -1571,7 +1585,7 @@ noinline void bpf_huge_promotion_page_info(unsigned long page_pointer, unsigned 
 	BUG_ON(page_pointer == 0);
 }
 
-noinline void bpf_demotion_page_info(unsigned long page_pointer, unsigned int page_idx, unsigned long ltm_accesses, unsigned long accesses_before_mig, unsigned long total_accesses)
+noinline void bpf_demotion_page_info(unsigned long page_pointer, unsigned int page_idx, unsigned long recent_accesses, unsigned long bottom_accesses, unsigned long total_accesses)
 {
 	// Do nothing
 	/*
@@ -1582,7 +1596,7 @@ noinline void bpf_demotion_page_info(unsigned long page_pointer, unsigned int pa
 	BUG_ON(page_pointer == 0);
 }
 
-noinline void bpf_promotion_page_info(unsigned long page_pointer, unsigned int page_idx, unsigned long ltm_accesses, unsigned long accesses_before_mig, unsigned long total_accesses)
+noinline void bpf_promotion_page_info(unsigned long page_pointer, unsigned int page_idx, unsigned long recent_accesses, unsigned long bottom_accesses, unsigned long total_accesses)
 {
 	// Do nothing
 	/*
@@ -1616,6 +1630,9 @@ noinline void bpf_promotion_page_info(unsigned long page_pointer, unsigned int p
  *
  * Returns the number of pages that were not migrated, or an error code.
  */
+
+
+
 int migrate_pages_internal(struct list_head *from, new_page_t get_new_page,
 		free_page_t put_new_page, unsigned long private,
 		enum migrate_mode mode, int reason, unsigned int *ret_succeeded, long long migration_ctr, int from_htmm)
@@ -1671,10 +1688,8 @@ retry:
 					huge_page = 1;
 					meta = get_meta_page(page);
 					page_idx = meta->idx;
-					stm_accesses = meta->total_accesses; 	
-					ltm_accesses = meta->ltm;
-					accesses_before_mig = (unsigned int)meta->accesses_per_mig;
-					meta->accesses_per_mig = 0;
+					stm_accesses = meta->recent_accesses; 	
+					ltm_accesses = meta->bottom_accesses;
 					virtual_address = get_page_virtual_address(page); 
 				}
 				rc = unmap_and_move_huge_page(get_new_page,
@@ -1688,10 +1703,8 @@ retry:
 						huge_page = 1;
 						meta = get_meta_page(page);
 						page_idx = meta->idx;
-						stm_accesses = (unsigned int)meta->total_accesses; 	
-						ltm_accesses = (unsigned int)meta->ltm;
-						accesses_before_mig = (unsigned int)meta->accesses_per_mig;
-						meta->accesses_per_mig = 0;
+						stm_accesses = (unsigned int)meta->recent_accesses; 	
+						ltm_accesses = (unsigned int)meta->bottom_accesses;
 						virtual_address = get_page_virtual_address(page); 
 					} else {
 						/*
@@ -1705,11 +1718,14 @@ retry:
 							printk(KERN_INFO "%s: page not mapped. So idx = -1\n", __func__);
 						}
 						*/
+
 						huge_page = 0;
-						page_idx = get_pginfo_idx(page);
+						
+						if (htmm_memcg) {
+							page_idx = get_pginfo_idx(page, htmm_memcg);
+						}
 						stm_accesses = (unsigned int)get_pginfo_lifetime_accesses(page);
 						ltm_accesses = (unsigned int)get_pginfo_ltm_accesses(page);
-						accesses_before_mig = get_pginfo_accesses_per_mig(page);
 						virtual_address = get_page_virtual_address(page); 
 					}
 				}
@@ -1790,9 +1806,10 @@ retry:
 #ifdef CONFIG_HTMM
 						if (migration_ctr != -1) {
 							if (private == 0 && virtual_address != 0) {
-								bpf_huge_promotion_page_info(virtual_address, page_idx, ltm_accesses, accesses_before_mig, total_accesses);
+								compute_estimate(virtual_address, htmm_memcg->nr_sampled, htmm_memcg->last_cooling_sample, stm_accesses, ltm_accesses, htmm_cooling_period);
+								bpf_huge_promotion_page_info(virtual_address, page_idx, stm_accesses, ltm_accesses, total_accesses);
 							} else if (virtual_address != 0) {
-								bpf_huge_demotion_page_info(virtual_address, page_idx, ltm_accesses, accesses_before_mig, total_accesses);
+								bpf_huge_demotion_page_info(virtual_address, page_idx, stm_accesses, ltm_accesses, total_accesses);
 							}
 						}
 #endif // CONFIG_HTMM
@@ -1803,9 +1820,10 @@ retry:
 					if (migration_ctr != -1) {
 						BUG_ON(PageHuge(page));
 						if (private == 0 && virtual_address != 0) {
-							bpf_promotion_page_info(virtual_address, page_idx, ltm_accesses, accesses_before_mig, total_accesses);
+							compute_estimate(virtual_address, htmm_memcg->nr_sampled, htmm_memcg->last_cooling_sample, stm_accesses, ltm_accesses, htmm_cooling_period);
+							bpf_promotion_page_info(virtual_address, page_idx, stm_accesses, ltm_accesses, total_accesses);
 						} else if (virtual_address != 0) {
-							bpf_demotion_page_info(virtual_address, page_idx, ltm_accesses, accesses_before_mig, total_accesses);
+							bpf_demotion_page_info(virtual_address, page_idx, stm_accesses, ltm_accesses, total_accesses);
 						}
 					}
 				}

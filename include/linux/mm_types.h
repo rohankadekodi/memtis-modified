@@ -164,8 +164,8 @@ struct page {
 			unsigned long __compound_pad_1;	/* compound_head */
 			unsigned int ltm;	/* ltm */
 			uint16_t do_migration; /* lock the ltm */ 
-			uint16_t ltm_when_locked; /* what was the ltm when we last locked */
-			unsigned int total_accesses;
+			uint16_t recent_accesses; /* what was the ltm when we last locked */
+			unsigned int bottom_accesses;
 			unsigned int accesses_per_mig;
 			//unsigned long lifetime_accesses;
 			unsigned int hot_utils;

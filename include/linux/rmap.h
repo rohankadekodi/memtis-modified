@@ -193,7 +193,7 @@ int page_referenced(struct page *, int is_locked,
 #ifdef CONFIG_HTMM
 int cooling_page(struct page *page, struct mem_cgroup *memcg);
 int page_check_hotness(struct page *page, struct mem_cgroup *memcg);
-int get_pginfo_idx(struct page *page);
+int get_pginfo_idx(struct page *page, struct mem_cgroup *memcg);
 unsigned long get_pginfo_lifetime_accesses(struct page *page);
 unsigned long get_pginfo_ltm_accesses(struct page *page);
 unsigned long get_pginfo_accesses_per_mig(struct page *page);
@@ -316,7 +316,7 @@ static inline int page_check_hotness(struct page *page, struct mem_cgroup *memcg
 {
     return false;
 }
-static int get_pginfo_idx(struct page *page)
+static int get_pginfo_idx(struct page *page, struct mem_cgroup *memcg)
 {
     return -1;
 }

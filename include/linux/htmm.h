@@ -112,18 +112,18 @@ extern int set_page_coolstatus(struct page *page, pte_t *pte, struct mm_struct *
 extern void set_lru_adjusting(struct mem_cgroup *memcg, bool inc_thres);
 
 extern void update_pginfo(pid_t pid, unsigned long address, enum events e);
-extern void bpf_register_memory_access(unsigned long address, unsigned long memtier, unsigned long stm_accesses, unsigned long ltm_accesses, unsigned long bucket_idx);
-extern void bpf_register_memory_access_ltm(unsigned long address, unsigned long stm_accesses, unsigned long memtier, unsigned long hot_threshold, unsigned long total_accesses);
+extern void bpf_register_memory_access(unsigned long address, unsigned long memtier, unsigned long bottom_accesses, unsigned long ltm_accesses, unsigned long bucket_idx);
+extern void bpf_register_memory_access_ltm(unsigned long address, unsigned long bottom_accesses, unsigned long memtier, unsigned long hot_threshold, unsigned long total_accesses);
 //extern void bpf_register_memory_access_ltm(unsigned long address, unsigned long stm_accesses, unsigned long ltm_accesses, unsigned long total_accesses);
 extern void bpf_register_cooling(unsigned long address, unsigned long total_accesses);
 extern void bpf_register_adaptation(unsigned long warm_idx, unsigned long hot_idx, unsigned long total_accesses);
 extern void bpf_register_page_alloc(unsigned long virtual_address, unsigned long hugepage, unsigned long total_accesses);
 extern void bpf_register_page_add_to_mig_queue_promotion(unsigned long virtual_address,
-		unsigned long total_accesses, unsigned long do_migration,
-		unsigned long stm, unsigned long ltm);
+		unsigned long total_accesses, 
+		unsigned long recent_accesses, unsigned long bottom_accesses);
 extern void bpf_register_page_add_to_mig_queue_demotion(unsigned long virtual_address,
-		unsigned long total_accesses, unsigned long do_migration,
-		unsigned long stm, unsigned long ltm);
+		unsigned long total_accesses,
+		unsigned long recent_accesses, unsigned long bottom_accesses);
 
 extern bool deferred_split_huge_page_for_htmm(struct page *page);
 extern unsigned long deferred_split_scan_for_htmm(struct mem_cgroup_per_node *pn,
@@ -133,13 +133,12 @@ extern void putback_split_pages(struct list_head *split_list, struct lruvec *lru
 extern bool check_split_huge_page(struct mem_cgroup *memcg, struct page *meta, bool hot);
 extern bool move_page_to_deferred_split_queue(struct mem_cgroup *memcg, struct page *page);
 
-extern void move_page_to_active_lru(struct page *page, unsigned long total_accesses, unsigned long accesses_per_mig, unsigned long stm, unsigned long ltm);
-extern void move_page_to_inactive_lru(struct page *page, unsigned long total_accesses, unsigned long accesses_per_mig, unsigned long stm, unsigned long ltm);
+extern void move_page_to_active_lru(struct page *page, unsigned long total_accesses, unsigned long stm, unsigned long ltm);
+extern void move_page_to_inactive_lru(struct page *page, unsigned long total_accesses, unsigned long stm, unsigned long ltm);
 
 
 extern struct page *get_meta_page(struct page *page);
 extern unsigned int get_accesses_from_idx(unsigned int idx);
-extern unsigned int get_idx(unsigned long num);
 extern int get_skew_idx(unsigned long num);
 extern void uncharge_htmm_pte(pte_t *pte, struct mem_cgroup *memcg);
 extern void uncharge_htmm_page(struct page *page, struct mem_cgroup *memcg);
@@ -157,8 +156,29 @@ extern void ksamplingd_exit(void);
 extern int process_pid;
 extern void *memcg;
 
+static unsigned int get_idx(unsigned long num)
+{
+    unsigned int cnt = 0;
+   
+    num++;
+    while (1) {
+	num = num >> 1;
+	if (num)
+	    cnt++;
+	else	
+	    return cnt;
+	
+	if (cnt == 15)
+	    break;
+    }
+
+    return cnt;
+}
+
 static inline bool decide_ltm_stm(unsigned long stm_accesses, unsigned long ltm_accesses, unsigned long htmm_mode)
 {
+	return false;
+#if 0
 	if (htmm_mode == HTMM_LSTM || htmm_mode == HTMM_LSTM_PDLOCK || htmm_mode == HTMM_LSTM_DLOCK) {
 		if ((stm_accesses * 3) < (ltm_accesses) &&
 			(stm_accesses * 15) > ltm_accesses) {
@@ -171,16 +191,36 @@ static inline bool decide_ltm_stm(unsigned long stm_accesses, unsigned long ltm_
 	}
 	return false;
 	//return stm_accesses;
+#endif
+}
+
+static inline unsigned int compute_idx(unsigned long nr_samples, unsigned long last_cooling_sample, unsigned long recent_accesses, unsigned long bottom_accesses, unsigned long htmm_cooling_period)
+{
+	long long alpha, estimation, estimation_1;
+	unsigned int bucket_idx;
+	alpha = nr_samples - last_cooling_sample; 
+	estimation_1 = (long long)recent_accesses - (long long)(alpha * (long long)(bottom_accesses) / htmm_cooling_period);
+	if (estimation_1 < 0)
+		estimation_1 = 0;
+	else
+		estimation_1 = estimation_1 / 2;
+
+	estimation = bottom_accesses + estimation_1;
+	bucket_idx = get_idx(estimation);
+	return bucket_idx;
 }
 
 static inline unsigned long update_ltm(unsigned long current_ltm)
 {
-	return ((current_ltm * 9) / 10);
+	//return ((current_ltm * 9) / 10);
+	return (current_ltm >> 1);
 }
 
 
 static inline bool inspect_page_migration_lock(pginfo_t *pginfo, int htmm_mode)
 {
+	return true;
+#if 0
 	bool stay_locked = false;
 	bool use_ltm = false;
 	if (htmm_mode == HTMM_LSTM || htmm_mode == HTMM_LSTM_PDLOCK || htmm_mode == HTMM_LSTM_DLOCK) {
@@ -202,10 +242,13 @@ static inline bool inspect_page_migration_lock(pginfo_t *pginfo, int htmm_mode)
 		pginfo->do_migration = true;
 	}
 	return pginfo->do_migration;
+#endif
 }
 
 static inline bool inspect_hugepage_migration_lock(struct page *meta_page, int htmm_mode)
 {
+	return true;
+#if 0
 	bool stay_locked = false;
 	bool use_ltm = false;
 	if (htmm_mode == HTMM_LSTM || htmm_mode == HTMM_LSTM_PDLOCK || htmm_mode == HTMM_LSTM_DLOCK) {
@@ -227,6 +270,7 @@ static inline bool inspect_hugepage_migration_lock(struct page *meta_page, int h
 		meta_page->do_migration = true;
 	}
 	return meta_page->do_migration;
+#endif
 }
 
 static inline unsigned long get_sample_period(unsigned long cur) {

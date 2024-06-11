@@ -365,6 +365,7 @@ struct mem_cgroup {
 	unsigned long nr_active_pages; /* updated by need_lru_cooling() */
 	/* stat for sampled accesses */
 	unsigned long nr_sampled; /* the total number of sampled accesses */
+	unsigned long last_cooling_sample; /* The sample when we last did a cooldown */
 	unsigned long nr_sampled_for_split; /* nr_sampled for split decision */
 	unsigned long nr_dram_sampled; /* accesses to DRAM: n(i) */
 	unsigned long prev_dram_sampled; /* accesses to DRAM n(i-1) */
