@@ -939,23 +939,26 @@ void move_page_to_active_lru(struct page *page, unsigned long total_accesses, un
     lruvec = mem_cgroup_page_lruvec(page);
     
     spin_lock_irq(&lruvec->lru_lock);
-    if (PageActive(page))
+    if (PageActive(page)) {
 	goto lru_unlock;
+    }
 
-    if (!__isolate_lru_page_prepare(page, 0))
+    if (!__isolate_lru_page_prepare(page, 0)) {
 	goto lru_unlock;
+    }
 
-    if (unlikely(!get_page_unless_zero(page)))
+    if (unlikely(!get_page_unless_zero(page))) {
 	goto lru_unlock;
+    }
 
     if (!TestClearPageLRU(page)) {
 	put_page(page);
 	goto lru_unlock;
     }
     
-    virtual_address = get_page_virtual_address(page); 
     //is_locked = get_pginfo_do_migration(page);
-    is_locked = true; 
+    //is_locked = true; 
+    virtual_address = get_page_virtual_address(page); 
     if (virtual_address != 1) {
 	    bpf_register_page_add_to_mig_queue_promotion(virtual_address, phase_num, stm, ltm);
     }
@@ -1015,6 +1018,25 @@ lru_unlock:
 
     if (!list_empty(&l_inactive))
 	BUG();
+}
+
+noinline void bpf_log_estimate_values_access(unsigned long page_pointer, long long estimation, unsigned long htmm_cooling_period, unsigned long last_cooling_sample, unsigned long total_accesses)
+{
+	BUG_ON(page_pointer == 0);	
+}
+
+static void compute_estimate_access(unsigned long page_pointer, unsigned long nr_samples, unsigned long last_cooling_sample, unsigned long recent_accesses, unsigned long bottom_accesses, unsigned long htmm_cooling_period)
+{
+	long long alpha, estimation, estimation_1;
+	alpha = nr_samples - last_cooling_sample; 
+	estimation_1 = (long long)recent_accesses - (long long)(alpha * (long long)(bottom_accesses) / htmm_cooling_period);
+	if (estimation_1 < 0)
+		estimation_1 = 0;
+	else
+		estimation_1 = estimation_1 / 2;
+
+	estimation = bottom_accesses + estimation_1;
+	bpf_log_estimate_values_access(page_pointer, estimation, htmm_cooling_period, last_cooling_sample, nr_samples);
 }
 
 static void update_base_page(struct vm_area_struct *vma,
@@ -1089,6 +1111,7 @@ static void update_base_page(struct vm_area_struct *vma,
     virtual_address = get_page_virtual_address(page); 
     if (virtual_address != 1) {
 	    bpf_register_memory_access_ltm((unsigned long) virtual_address, pginfo->bottom_accesses, dram, memcg->active_threshold, phase_num);
+	    compute_estimate_access((unsigned long)virtual_address, memcg->nr_sampled, memcg->last_cooling_sample, pginfo->recent_accesses, pginfo->bottom_accesses, htmm_cooling_period);
     }
     
     if (page_unlocked) {
@@ -1135,6 +1158,7 @@ static void update_huge_page(struct vm_area_struct *vma, pmd_t *pmd,
     prev_idx = compute_idx(memcg->nr_sampled - 1, memcg->last_cooling_sample, pginfo->recent_accesses, pginfo->bottom_accesses, htmm_cooling_period);
     pginfo->recent_accesses++;
     cur_idx = compute_idx(memcg->nr_sampled, memcg->last_cooling_sample, pginfo->recent_accesses, pginfo->bottom_accesses, htmm_cooling_period);
+
     
     //meta_page->total_accesses++;
     meta_page->accesses_per_mig++;
@@ -1221,6 +1245,7 @@ static void update_huge_page(struct vm_area_struct *vma, pmd_t *pmd,
     virtual_address = get_page_virtual_address(page); 
     if (virtual_address != 1) {
 	    bpf_register_memory_access_ltm((unsigned long) address, meta_page->bottom_accesses, dram, memcg->active_threshold, phase_num);
+	    compute_estimate_access((unsigned long)address, memcg->nr_sampled, memcg->last_cooling_sample, meta_page->recent_accesses, meta_page->bottom_accesses, htmm_cooling_period);
     }
 
 
@@ -1460,6 +1485,7 @@ static bool __cooling(struct mm_struct *mm,
     int nid;
 
     /* check whether the previous cooling is done or not. */
+    /*
     for_each_node_state(nid, N_MEMORY) {
 	struct mem_cgroup_per_node *pn = memcg->nodeinfo[nid];
 	if (pn && READ_ONCE(pn->need_cooling)) {
@@ -1469,6 +1495,7 @@ static bool __cooling(struct mm_struct *mm,
 	    return false;
 	}
     }
+    */
 
     spin_lock(&memcg->access_lock);
 

@@ -3,7 +3,7 @@
 #define DEFERRED_SPLIT_ISOLATED 1
 
 #define BUFFER_SIZE	32 /* 128: 1MB */
-#define CPUS_PER_SOCKET 20
+#define CPUS_PER_SOCKET 32
 #define MAX_MIGRATION_RATE_IN_MBPS  2048 /* 2048MB per sec */
 
 
@@ -208,6 +208,9 @@ static inline unsigned int compute_idx(unsigned long nr_samples, unsigned long l
 	estimation = bottom_accesses + estimation_1;
 	bucket_idx = get_idx(estimation);
 	return bucket_idx;
+
+	//bucket_idx = get_idx(bottom_accesses);
+	//return bucket_idx;
 }
 
 static inline unsigned long update_ltm(unsigned long current_ltm)
@@ -347,5 +350,6 @@ extern int kmigraterd_init(void);
 extern void kmigraterd_stop(void);
 extern void bpf_demotion_loop_hook(unsigned long demotion_ctr, unsigned long nr_reclaimed); 
 extern void bpf_promotion_loop_hook(unsigned long promotion_ctr, unsigned long nr_promoted); 
+extern void bpf_log_estimate_values_access(unsigned long page_pointer, long long estimation, unsigned long htmm_cooling_period, unsigned long last_cooling_sample, unsigned long total_accesses);
 extern void __adjust_active_threshold(struct mem_cgroup *memcg);
 
