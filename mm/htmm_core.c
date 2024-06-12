@@ -1501,7 +1501,8 @@ static bool __cooling(struct mm_struct *mm,
 
     reset_memcg_stat(memcg); 
     memcg->cooling_clock++;
-    memcg->bp_active_threshold--;
+    if (memcg->bp_active_threshold > 2)
+	    memcg->bp_active_threshold--;
     memcg->cooled = true;
     smp_mb();
     spin_unlock(&memcg->access_lock);
@@ -1533,6 +1534,8 @@ void __adjust_active_threshold(struct mem_cgroup *memcg)
     if (idx_hot != 15)
 	idx_hot++;
 
+    if (idx_hot == 1)
+	idx_hot++;
     need_warm = true;
     //if (nr_active < (max_nr_pages * 75 / 100))
 	//need_warm = true;
@@ -1546,6 +1549,8 @@ void __adjust_active_threshold(struct mem_cgroup *memcg)
 	nr_active += nr_pages;
     }
     if (idx_bp != 15)
+	idx_bp++;
+    if (idx_bp == 1)
 	idx_bp++;
 
     spin_unlock(&memcg->access_lock);

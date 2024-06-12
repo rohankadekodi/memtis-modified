@@ -723,8 +723,9 @@ static unsigned long demote_node(pg_data_t *pgdat, struct mem_cgroup *memcg,
 	
 	nr_lowertier_active = nr_lowertier_active < nr_to_reclaim ?
 			nr_lowertier_active : nr_to_reclaim;
-	if (nr_lowertier_active && nr_reclaimed < nr_lowertier_active)
-	    memcg->warm_threshold = memcg->active_threshold;
+	if (nr_lowertier_active && nr_reclaimed < nr_lowertier_active) {
+	    //memcg->warm_threshold = memcg->active_threshold;
+	}
     }
 
     /* check the condition */
