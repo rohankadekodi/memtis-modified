@@ -1556,10 +1556,15 @@ noinline void bpf_log_estimate_values(unsigned long page_pointer, long long esti
 
 static void compute_estimate(unsigned long page_pointer, unsigned long nr_samples, unsigned long last_cooling_sample, unsigned long recent_accesses, unsigned long bottom_accesses, unsigned long htmm_cooling_period)
 {
-	long long alpha, estimation;
-	unsigned int bucket_idx;
+	long long alpha, estimation, estimation_1;
 	alpha = nr_samples - last_cooling_sample; 
-	estimation = bottom_accesses + (recent_accesses - (alpha * (uint64_t)(bottom_accesses) / htmm_cooling_period)) / 2;
+	estimation_1 = (long long)recent_accesses - (long long)(alpha * (long long)(bottom_accesses) / htmm_cooling_period);
+	if (estimation_1 < 0)
+		estimation_1 = 0;
+	else
+		estimation_1 = estimation_1 / 2;
+
+	estimation = bottom_accesses + estimation_1;
 	bpf_log_estimate_values(page_pointer, estimation, htmm_cooling_period, last_cooling_sample, nr_samples);
 }
 
