@@ -1437,13 +1437,22 @@ static bool __cooling(struct mm_struct *mm,
 
     reset_memcg_stat(memcg); 
     memcg->cooling_clock++;
-    if (memcg->bp_active_threshold > 2)
+    if (memcg->bp_active_threshold > 1)
 	    memcg->bp_active_threshold--;
     memcg->cooled = true;
     smp_mb();
     spin_unlock(&memcg->access_lock);
     set_lru_cooling(mm);
     memcg->last_cooling_sample = memcg->nr_sampled;
+    if (memcg->change_cooling_rate == 1) {
+	htmm_cooling_period = htmm_cooling_period * 2;
+	printk(KERN_INFO "increased cooling period to: %lu\n", htmm_cooling_period);
+    } else if (memcg->change_cooling_rate == -1) {
+	htmm_cooling_period = htmm_cooling_period / 2;
+	printk(KERN_INFO "decreased cooling period to: %lu\n", htmm_cooling_period);
+    }
+    memcg->change_cooling_rate = 0;
+    printk(KERN_INFO "kept cooling period at: %lu\n", htmm_cooling_period);
     return true;
 }
 
@@ -1455,11 +1464,22 @@ void __adjust_active_threshold(struct mem_cgroup *memcg)
 	    get_memcg_promotion_watermark(memcg->max_nr_dram_pages);
     bool need_warm = false;
     int idx_hot, idx_bp;
+    bool check_cooling_period_inc = false;
+    bool check_cooling_period_dec = false;
 
     //if (need_cooling(memcg))
 //	return;
 
     spin_lock(&memcg->access_lock);
+
+    if (htmm_mode == HTMM_ESTIMATION) {
+	if (memcg->active_threshold <= 1) {
+		check_cooling_period_inc = true;
+	} else if (memcg->active_threshold == 15) {
+		check_cooling_period_dec = true;
+	}
+    }
+
 
     for (idx_hot = 15; idx_hot >= 0; idx_hot--) {
 	unsigned long nr_pages = memcg->hotness_hg[idx_hot];
@@ -1470,9 +1490,10 @@ void __adjust_active_threshold(struct mem_cgroup *memcg)
     if (idx_hot != 15)
 	idx_hot++;
 
+
     if (htmm_mode == HTMM_ESTIMATION) {
-	    if (idx_hot == 1)
-		    idx_hot++;
+	    //if (idx_hot == 1)
+		//    idx_hot++;
 	    need_warm = true;
     } else {
 	    if (nr_active < (max_nr_pages * 75 / 100))
@@ -1490,8 +1511,8 @@ void __adjust_active_threshold(struct mem_cgroup *memcg)
     if (idx_bp != 15)
 	idx_bp++;
     if (htmm_mode == HTMM_ESTIMATION) {
-	    if (idx_bp == 1)
-		    idx_bp++;
+	    //if (idx_bp == 1)
+		//    idx_bp++;
     }
 
     spin_unlock(&memcg->access_lock);
@@ -1551,6 +1572,18 @@ void __adjust_active_threshold(struct mem_cgroup *memcg)
 	    memcg->warm_threshold = memcg->active_threshold;
     } else { // disable warm
 	memcg->warm_threshold = memcg->active_threshold;
+    }
+
+    if (check_cooling_period_inc) {
+	if (memcg->active_threshold <= 1) {
+		memcg->change_cooling_rate = 1;
+	}
+    } else if (check_cooling_period_dec) {
+	if (memcg->active_threshold == 15) {
+		memcg->change_cooling_rate = -1;
+	}
+    } else {
+	memcg->change_cooling_rate = 0;
     }
 
     bpf_register_adaptation(memcg->warm_threshold, memcg->active_threshold, phase_num);

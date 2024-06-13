@@ -5245,6 +5245,7 @@ static struct mem_cgroup *mem_cgroup_alloc(void)
 	memcg->nr_max_sampled = 0;
 	/* thresholds */
 	memcg->active_threshold = htmm_thres_hot;
+	memcg->change_cooling_rate = 0;
 	memcg->warm_threshold = htmm_thres_hot;
 	memcg->bp_active_threshold = htmm_thres_hot;
 

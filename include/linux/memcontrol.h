@@ -376,6 +376,7 @@ struct mem_cgroup {
 	unsigned int active_threshold; /* hot */
 	unsigned int warm_threshold;
 	unsigned int bp_active_threshold; /* expected threshold */
+	volatile int change_cooling_rate;
 	/* split */
 	unsigned int split_threshold;
 	unsigned int split_active_threshold;

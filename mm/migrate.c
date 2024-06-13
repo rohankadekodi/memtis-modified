@@ -1811,7 +1811,6 @@ retry:
 #ifdef CONFIG_HTMM
 						if (migration_ctr != -1) {
 							if (private == 0 && virtual_address != 0) {
-								compute_estimate(virtual_address, htmm_memcg->nr_sampled, htmm_memcg->last_cooling_sample, stm_accesses, ltm_accesses, htmm_cooling_period);
 								bpf_huge_promotion_page_info(virtual_address, page_idx, stm_accesses, ltm_accesses, total_accesses);
 							} else if (virtual_address != 0) {
 								bpf_huge_demotion_page_info(virtual_address, page_idx, stm_accesses, ltm_accesses, total_accesses);
@@ -1825,7 +1824,6 @@ retry:
 					if (migration_ctr != -1) {
 						BUG_ON(PageHuge(page));
 						if (private == 0 && virtual_address != 0) {
-							compute_estimate(virtual_address, htmm_memcg->nr_sampled, htmm_memcg->last_cooling_sample, stm_accesses, ltm_accesses, htmm_cooling_period);
 							bpf_promotion_page_info(virtual_address, page_idx, stm_accesses, ltm_accesses, total_accesses);
 						} else if (virtual_address != 0) {
 							bpf_demotion_page_info(virtual_address, page_idx, stm_accesses, ltm_accesses, total_accesses);
