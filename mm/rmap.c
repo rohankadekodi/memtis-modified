@@ -974,27 +974,22 @@ static bool cooling_page_one(struct page *page, struct vm_area_struct *vma,
 		int j;
 		
 		//prev_accessed = pginfo->total_accesses;
-		prev_idx = compute_idx(hca->memcg->nr_sampled, hca->memcg->last_cooling_sample, pginfo->recent_accesses, pginfo->bottom_accesses, htmm_cooling_period);
+		prev_idx = compute_idx(hca->memcg->nr_sampled, hca->memcg->last_cooling_sample, pginfo->recent_accesses, pginfo->bottom_accesses, pginfo->ltm, htmm_cooling_period, htmm_mode);
 		pginfo->nr_accesses = 0;
 		for (j = 0; j < diff; j++) {
 		    //pginfo->total_accesses >>= 1;
 		    pginfo->ltm = update_ltm(pginfo->ltm);
-		    //pginfo->ltm = (uint32_t)(pginfo->ltm * 3 / 4);
 		    pginfo->bottom_accesses += pginfo->recent_accesses;
-		    pginfo->recent_accesses = 0;
+		    if (htmm_mode == HTMM_ESTIMATION) {
+			pginfo->recent_accesses = 0;
+		    } else {
+			pginfo->recent_accesses >>= 1;
+		    }
 		    pginfo->bottom_accesses >>= 1;
 		}
 
-		//accesses = decide_ltm_stm(pginfo->total_accesses, pginfo->ltm, htmm_mode);
-		/*
-		accesses = pginfo->total_accesses;
-		if (decide_ltm_stm(pginfo->total_accesses, pginfo->ltm, htmm_mode)) {
-			accesses = pginfo->ltm / 9;
-		}
 		inspect_page_migration_lock(pginfo, htmm_mode);
-		cur_idx = get_idx(accesses);
-		*/
-		cur_idx = compute_idx(hca->memcg->nr_sampled, hca->memcg->last_cooling_sample, pginfo->recent_accesses, pginfo->bottom_accesses, htmm_cooling_period);
+		cur_idx = compute_idx(hca->memcg->nr_sampled, hca->memcg->last_cooling_sample, pginfo->recent_accesses, pginfo->bottom_accesses, pginfo->ltm, htmm_cooling_period, htmm_mode);
 
 		hca->memcg->hotness_hg[cur_idx]++;
 		hca->memcg->ebp_hotness_hg[cur_idx]++;
@@ -1083,17 +1078,8 @@ static bool page_check_hotness_one(struct page *page, struct vm_area_struct *vma
 	    if (!pginfo)
 		continue;
 	    
-	    //accesses = decide_ltm_stm(pginfo->total_accesses, pginfo->ltm, htmm_mode);
-	    /*
-	    accesses = pginfo->total_accesses;
-	    if (decide_ltm_stm(pginfo->total_accesses, pginfo->ltm, htmm_mode)) {
-		    accesses = pginfo->ltm / 9;
-	    }
 	    inspect_page_migration_lock(pginfo, htmm_mode);
-	    cur_idx = get_idx(accesses);
-	    */
-
-	    cur_idx = compute_idx(hca->memcg->nr_sampled, hca->memcg->last_cooling_sample, pginfo->recent_accesses, pginfo->bottom_accesses, htmm_cooling_period);
+	    cur_idx = compute_idx(hca->memcg->nr_sampled, hca->memcg->last_cooling_sample, pginfo->recent_accesses, pginfo->bottom_accesses, pginfo->ltm, htmm_cooling_period, htmm_mode);
 	    if (cur_idx >= hca->memcg->active_threshold)
 		hca->page_is_hot = 2;
 	    else
@@ -1157,16 +1143,8 @@ static bool get_pginfo_idx_one(struct page *page, struct vm_area_struct *vma,
 	    if (!pginfo)
 		continue;
 	    
-	    //accesses = decide_ltm_stm(pginfo->total_accesses, pginfo->ltm, htmm_mode);
-	    /*
-	    accesses = pginfo->total_accesses;
-	    if (decide_ltm_stm(pginfo->total_accesses, pginfo->ltm, htmm_mode)) {
-		    accesses = pginfo->ltm / 9;
-	    }
 	    inspect_page_migration_lock(pginfo, htmm_mode);
-	    cur_idx = get_idx(accesses);
-	    */
-	    cur_idx = compute_idx(hca->memcg->nr_sampled, hca->memcg->last_cooling_sample, pginfo->recent_accesses, pginfo->bottom_accesses, htmm_cooling_period);
+	    cur_idx = compute_idx(hca->memcg->nr_sampled, hca->memcg->last_cooling_sample, pginfo->recent_accesses, pginfo->bottom_accesses, pginfo->ltm, htmm_cooling_period, htmm_mode);
 	    hca->page_is_hot = cur_idx;
 	} else if (pvmw.pmd) {
 	    hca->page_is_hot = -1;

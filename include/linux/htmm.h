@@ -25,6 +25,7 @@
 #define HTMM_LSTM	    0x5
 #define HTMM_LSTM_PDLOCK    0x6
 #define HTMM_LSTM_DLOCK     0x7
+#define HTMM_ESTIMATION     0x8 /* Estimation technique of HTMM */
 
 /**/
 #define DRAM_ACCESS_LATENCY 80
@@ -175,26 +176,68 @@ static unsigned int get_idx(unsigned long num)
     return cnt;
 }
 
-static inline bool decide_ltm_stm(unsigned long stm_accesses, unsigned long ltm_accesses, unsigned long htmm_mode)
+static inline bool decide_ltm_stm(unsigned long stm_accesses, unsigned long ltm_accesses)
 {
-	return false;
-#if 0
-	if (htmm_mode == HTMM_LSTM || htmm_mode == HTMM_LSTM_PDLOCK || htmm_mode == HTMM_LSTM_DLOCK) {
-		if ((stm_accesses * 3) < (ltm_accesses) &&
+	if ((stm_accesses * 3) < (ltm_accesses) &&
 			(stm_accesses * 15) > ltm_accesses) {
-
-			return true; 
-			//return (unsigned long)(ltm_accesses / 9);
-		}
-		return false;
-		//return stm_accesses;
+		return true; 
 	}
 	return false;
-	//return stm_accesses;
-#endif
 }
 
-static inline unsigned int compute_idx(unsigned long nr_samples, unsigned long last_cooling_sample, unsigned long recent_accesses, unsigned long bottom_accesses, unsigned long htmm_cooling_period)
+
+static inline unsigned long update_ltm(unsigned long current_ltm)
+{
+	return ((current_ltm * 9) / 10);
+}
+
+
+static inline bool inspect_page_migration_lock(pginfo_t *pginfo, int htmm_mode)
+{
+	bool stay_locked = false;
+	bool use_ltm = false;
+	if (htmm_mode == HTMM_LSTM || htmm_mode == HTMM_LSTM_PDLOCK || htmm_mode == HTMM_LSTM_DLOCK) {
+		if (pginfo->do_migration == false) {
+			stay_locked = decide_ltm_stm(pginfo->recent_accesses, pginfo->bottom_accesses);
+			if (!stay_locked) {
+				pginfo->do_migration = true;	
+			}
+		}
+	} else {
+		pginfo->do_migration = true;
+	}
+	return pginfo->do_migration;
+}
+
+static inline bool inspect_hugepage_migration_lock(struct page *meta_page, int htmm_mode)
+{
+	bool stay_locked = false;
+	bool use_ltm = false;
+	if (htmm_mode == HTMM_LSTM || htmm_mode == HTMM_LSTM_PDLOCK || htmm_mode == HTMM_LSTM_DLOCK) {
+		if (meta_page->do_migration == false) {
+			stay_locked = decide_ltm_stm(meta_page->recent_accesses, meta_page->bottom_accesses);
+			if (!stay_locked) {
+				meta_page->do_migration = true;	
+			}
+		} 
+	} else {
+		meta_page->do_migration = true;
+	}
+	return meta_page->do_migration;
+}
+
+static inline unsigned int compute_idx_lstm(unsigned long stm, unsigned long ltm)
+{
+	unsigned long accesses = stm;
+	unsigned int bucket_idx;
+	if (decide_ltm_stm(stm, ltm)) {
+		accesses = ltm / 9;
+	}
+	bucket_idx = get_idx(accesses);
+	return bucket_idx; 
+}
+
+static inline unsigned int compute_idx_estimation(unsigned long nr_samples, unsigned long last_cooling_sample, unsigned long recent_accesses, unsigned long bottom_accesses, unsigned long htmm_cooling_period)
 {
 	long long alpha, estimation, estimation_1;
 	unsigned int bucket_idx;
@@ -213,67 +256,23 @@ static inline unsigned int compute_idx(unsigned long nr_samples, unsigned long l
 	//return bucket_idx;
 }
 
-static inline unsigned long update_ltm(unsigned long current_ltm)
+static inline unsigned int compute_idx_memtis(unsigned long stm)
 {
-	//return ((current_ltm * 9) / 10);
-	return (current_ltm >> 1);
+	unsigned int bucket_idx;
+
+	bucket_idx = get_idx(stm);
+	return bucket_idx;
 }
 
-
-static inline bool inspect_page_migration_lock(pginfo_t *pginfo, int htmm_mode)
+static inline unsigned int compute_idx(unsigned long nr_samples, unsigned long last_cooling_sample,
+		unsigned long recent_accesses, unsigned long bottom_accesses, unsigned long ltm,
+		unsigned long htmm_cooling_period, int htmm_mode)
 {
-	return true;
-#if 0
-	bool stay_locked = false;
-	bool use_ltm = false;
-	if (htmm_mode == HTMM_LSTM || htmm_mode == HTMM_LSTM_PDLOCK || htmm_mode == HTMM_LSTM_DLOCK) {
-		if (pginfo->do_migration == false) {
-			stay_locked = decide_ltm_stm(pginfo->total_accesses, pginfo->ltm_when_locked, htmm_mode);
-			if (!stay_locked) {
-				pginfo->do_migration = true;	
-			}
-		} else {
-			/*
-			use_ltm = decide_ltm_stm(pginfo->total_accesses, pginfo->ltm, htmm_mode);
-			if (use_ltm) {
-				pginfo->do_migration = false;
-				pginfo->ltm_when_locked = pginfo->ltm;
-			}
-			*/	
-		}
-	} else {
-		pginfo->do_migration = true;
-	}
-	return pginfo->do_migration;
-#endif
-}
-
-static inline bool inspect_hugepage_migration_lock(struct page *meta_page, int htmm_mode)
-{
-	return true;
-#if 0
-	bool stay_locked = false;
-	bool use_ltm = false;
-	if (htmm_mode == HTMM_LSTM || htmm_mode == HTMM_LSTM_PDLOCK || htmm_mode == HTMM_LSTM_DLOCK) {
-		if (meta_page->do_migration == false) {
-			stay_locked = decide_ltm_stm(meta_page->total_accesses, meta_page->ltm_when_locked, htmm_mode);
-			if (!stay_locked) {
-				meta_page->do_migration = true;	
-			}
-		} else {
-			/*
-			use_ltm = decide_ltm_stm(meta_page->total_accesses, meta_page->ltm, htmm_mode);
-			if (use_ltm) {
-				meta_page->do_migration = false;
-				meta_page->ltm_when_locked = meta_page->ltm;
-			}
-			*/	
-		}
-	} else {
-		meta_page->do_migration = true;
-	}
-	return meta_page->do_migration;
-#endif
+	if (htmm_mode == HTMM_ESTIMATION)
+		return compute_idx_estimation(nr_samples, last_cooling_sample, recent_accesses, bottom_accesses, htmm_cooling_period);
+	if (htmm_mode == HTMM_LSTM || htmm_mode == HTMM_LSTM_DLOCK || htmm_mode == HTMM_LSTM_PDLOCK)
+		return compute_idx_lstm(recent_accesses, ltm);
+	return compute_idx_memtis(recent_accesses); 
 }
 
 static inline unsigned long get_sample_period(unsigned long cur) {

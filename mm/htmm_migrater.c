@@ -355,24 +355,12 @@ static unsigned long migrate_page_list(struct list_head *migrate_list,
     migrate_pages_internal(migrate_list, alloc_migrate_page, NULL,
 	    target_nid, MIGRATE_ASYNC, MR_NUMA_MISPLACED, &nr_succeeded, promotion ? promotion_ctr : demotion_ctr, 1);
 
-    if (promotion) {
-	//trace_printk("counting vm event of promotion: %u\n", nr_succeeded);
-	//printk(KERN_INFO "promotion number: %u\n", nr_succeeded);
-	//count_vm_events(HTMM_NR_PROMOTED, nr_succeeded);
-    }
-    else {
-	//trace_printk("counting vm event of demotion: %u\n", nr_succeeded);
-	//printk(KERN_INFO "demotion number: %u\n", nr_succeeded);
-	//count_vm_events(HTMM_NR_DEMOTED, nr_succeeded);
-    }
-
     return nr_succeeded;
 }
 
 noinline void bpf_promotion_loop_hook(unsigned long promotion_ctr, unsigned long nr_promoted) 
 {
 	// Do nothing
-	//printk(KERN_INFO "In the bpf demotion loop hook\n");
 	BUG_ON(promotion_ctr < 0);
 	count_vm_events(HTMM_NR_PROMOTED, nr_promoted);
 }
@@ -380,7 +368,6 @@ noinline void bpf_promotion_loop_hook(unsigned long promotion_ctr, unsigned long
 noinline void bpf_demotion_loop_hook(unsigned long demotion_ctr, unsigned long nr_reclaimed)
 {
 	// Do nothing
-	//printk(KERN_INFO "In the bpf demotion loop hook\n");
 	BUG_ON(demotion_ctr < 0);
 	count_vm_events(HTMM_NR_DEMOTED, nr_reclaimed);
 }
@@ -396,12 +383,9 @@ static unsigned long shrink_page_list(struct list_head *page_list,
     unsigned long nr_demotion_cand = 0;
     int huge_page = 0;
     unsigned long page_idx = 0;
-    unsigned long lifetime_accesses = 0;
     bool lock_page = false;
 
     cond_resched();
-
-    //trace_printk("DEMOTION ROUND STARTED. warm bucket idx = %d\n", memcg->warm_threshold);
 
     while (!list_empty(page_list)) {
 	struct page *page;
@@ -429,42 +413,33 @@ static unsigned long shrink_page_list(struct list_head *page_list,
 		if (meta->idx >= memcg->warm_threshold)
 		    goto keep_locked;
 
-		/*
 		if (htmm_mode == HTMM_LSTM_PDLOCK || htmm_mode == HTMM_LSTM_DLOCK) {
-			lock_page = decide_ltm_stm(meta->total_accesses, meta->ltm, htmm_mode);
+			lock_page = decide_ltm_stm(meta->recent_accesses, meta->ltm);
 			if (lock_page) {
 				meta->do_migration = false;
-				meta->ltm_when_locked = meta->ltm;
+				meta->bottom_accesses = meta->ltm;
 			}
 		}
-	    	*/
 
 		huge_page = 1;
 		page_idx = meta->idx;
-		lifetime_accesses = meta->recent_accesses;
 	    } else {
 		unsigned int idx = get_pginfo_idx(page, memcg);
 		bool do_migration = get_pginfo_do_migration(page);
 		page_idx = idx;
-		lifetime_accesses = get_pginfo_lifetime_accesses(page);
 
 		if (idx >= memcg->warm_threshold)
 		    goto keep_locked;
 
-		/*
 		if (htmm_mode == HTMM_LSTM_PDLOCK || htmm_mode == HTMM_LSTM_DLOCK) {
 			check_set_pginfo_lock_page(page);
 		}
-		*/
-
 
 		huge_page = 0;
 	    }
 	}
 
-	//trace_printk("demote_page: num_accesses %lu, huge_page = %d\n", lifetime_accesses_page, huge_page);
 	unsigned long virtual_address = get_page_virtual_address(page);
-	//bpf_demotion_page_info(virtual_address, lifetime_accesses, page_idx, (unsigned long) huge_page, demotion_ctr, page_demotion_ctr++);
 	unlock_page(page);
 	list_add(&page->lru, &demote_pages);
 	nr_demotion_cand += compound_nr(page);
@@ -481,9 +456,7 @@ keep:
 	list_splice(&demote_pages, page_list);
 
     list_splice(&ret_pages, page_list);
-    //trace_printk("DEMOTION ROUND ENDED. NR_RECLAIMED = %lu\n", nr_reclaimed);
     if (nr_demotion_cand > 0) {
-	    //bpf_demotion_loop_hook(demotion_ctr++, nr_reclaimed, nr_demotion_cand);
 	    bpf_demotion_loop_hook(demotion_ctr++, nr_reclaimed);
     }
 
@@ -498,11 +471,9 @@ static unsigned long promote_page_list(struct list_head *page_list,
     unsigned long nr_promoted = 0;
     int huge_page = 0;
     unsigned long page_idx = 0;
-    unsigned long lifetime_accesses = 0;
     bool lock_page = false;
 
     cond_resched();
-    //trace_printk("PROMOTION ROUND STARTED");
 
     while (!list_empty(page_list)) {
 	struct page *page;
@@ -525,29 +496,20 @@ static unsigned long promote_page_list(struct list_head *page_list,
 		struct page *meta = get_meta_page(page);
 		huge_page = 1;
 		page_idx = meta->idx;
-		/*
-		lifetime_accesses = meta->total_accesses;
 		if (htmm_mode == HTMM_LSTM_PDLOCK) {
-			lock_page = decide_ltm_stm(meta->total_accesses, meta->ltm, htmm_mode);
+			lock_page = decide_ltm_stm(meta->recent_accesses, meta->ltm);
 			if (lock_page) {
 				meta->do_migration = false;
-				meta->ltm_when_locked = meta->ltm;
+				meta->bottom_accesses = meta->ltm;
 			}
 		}
-		*/
 	} else {
 		bool do_migration = get_pginfo_do_migration(page);
-		huge_page = 0;
-		/*
-		page_idx = get_pginfo_idx(page);
-		lifetime_accesses = get_pginfo_lifetime_accesses(page);
 		if (htmm_mode == HTMM_LSTM_PDLOCK) {
 			check_set_pginfo_lock_page(page);
 		}
-		*/
 	}
 	unsigned long virtual_address = get_page_virtual_address(page);
-	//bpf_promotion_page_info(virtual_address, lifetime_accesses, page_idx, (unsigned long) huge_page, promotion_ctr, page_promotion_ctr++);
 	list_add(&page->lru, &promote_pages);
 	unlock_page(page);
 	continue;
@@ -562,7 +524,6 @@ __keep:
 	list_splice(&promote_pages, page_list);
 
     list_splice(&ret_pages, page_list);
-    //trace_printk("PROMOTION ROUND ENDED. NR_PROMOTED = %lu\n", nr_promoted);
     if (nr_promoted > 0) {
 	    bpf_promotion_loop_hook(promotion_ctr++, nr_promoted);
     }
@@ -724,7 +685,9 @@ static unsigned long demote_node(pg_data_t *pgdat, struct mem_cgroup *memcg,
 	nr_lowertier_active = nr_lowertier_active < nr_to_reclaim ?
 			nr_lowertier_active : nr_to_reclaim;
 	if (nr_lowertier_active && nr_reclaimed < nr_lowertier_active) {
-	    //memcg->warm_threshold = memcg->active_threshold;
+		if (htmm_mode != HTMM_ESTIMATION) {
+			memcg->warm_threshold = memcg->active_threshold;
+	    }
 	}
     }
 
