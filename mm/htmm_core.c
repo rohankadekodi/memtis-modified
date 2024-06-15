@@ -1437,22 +1437,34 @@ static bool __cooling(struct mm_struct *mm,
 
     reset_memcg_stat(memcg); 
     memcg->cooling_clock++;
-    if (memcg->bp_active_threshold > 1)
-	    memcg->bp_active_threshold--;
+
+    if (htmm_mode == HTMM_ESTIMATION) {
+	    if (memcg->bp_active_threshold > 2)
+		    memcg->bp_active_threshold--;
+    } else {
+	    if (memcg->bp_active_threshold > 1)
+		    memcg->bp_active_threshold--;
+    }
     memcg->cooled = true;
     smp_mb();
     spin_unlock(&memcg->access_lock);
     set_lru_cooling(mm);
     memcg->last_cooling_sample = memcg->nr_sampled;
+    /*
     if (memcg->change_cooling_rate == 1) {
-	htmm_cooling_period = htmm_cooling_period * 2;
+	if (htmm_cooling_period <= 120000) {
+		htmm_cooling_period = htmm_cooling_period * 2;
+	}
 	printk(KERN_INFO "increased cooling period to: %lu\n", htmm_cooling_period);
     } else if (memcg->change_cooling_rate == -1) {
-	htmm_cooling_period = htmm_cooling_period / 2;
+	if (htmm_cooling_period > 30000) {
+		htmm_cooling_period = htmm_cooling_period / 2;
+	}
 	printk(KERN_INFO "decreased cooling period to: %lu\n", htmm_cooling_period);
     }
     memcg->change_cooling_rate = 0;
     printk(KERN_INFO "kept cooling period at: %lu\n", htmm_cooling_period);
+    */
     return true;
 }
 
@@ -1492,8 +1504,8 @@ void __adjust_active_threshold(struct mem_cgroup *memcg)
 
 
     if (htmm_mode == HTMM_ESTIMATION) {
-	    //if (idx_hot == 1)
-		//    idx_hot++;
+	    if (idx_hot == 1)
+		    idx_hot++;
 	    need_warm = true;
     } else {
 	    if (nr_active < (max_nr_pages * 75 / 100))
@@ -1511,8 +1523,8 @@ void __adjust_active_threshold(struct mem_cgroup *memcg)
     if (idx_bp != 15)
 	idx_bp++;
     if (htmm_mode == HTMM_ESTIMATION) {
-	    //if (idx_bp == 1)
-		//    idx_bp++;
+	    if (idx_bp == 1)
+		    idx_bp++;
     }
 
     spin_unlock(&memcg->access_lock);
@@ -1526,9 +1538,15 @@ void __adjust_active_threshold(struct mem_cgroup *memcg)
     /* some pages may not be reflected in the histogram when cooling happens */
     if (memcg->cooled) {
 	/* when cooling happens, thres will be current - 1 */
-	if (idx_hot < memcg->active_threshold)
-	    if (memcg->active_threshold > 1)
-		memcg->active_threshold--;
+	if (idx_hot < memcg->active_threshold) {
+		if (htmm_mode == HTMM_ESTIMATION) {
+			if (memcg->active_threshold > 2)
+				memcg->active_threshold--;
+		} else {
+			if (memcg->active_threshold > 1)
+				memcg->active_threshold--;
+		}
+	}
 	if (idx_bp < memcg->bp_active_threshold)
 	    memcg->bp_active_threshold = idx_bp;
 	
