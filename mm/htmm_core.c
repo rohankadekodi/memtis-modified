@@ -1445,6 +1445,7 @@ static bool __cooling(struct mm_struct *mm,
 	    if (memcg->bp_active_threshold > 1)
 		    memcg->bp_active_threshold--;
     }
+
     memcg->cooled = true;
     smp_mb();
     spin_unlock(&memcg->access_lock);
