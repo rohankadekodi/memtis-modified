@@ -162,12 +162,8 @@ struct page {
 #ifdef CONFIG_HTMM
 		struct {	/* Third tail page of compound page */
 			unsigned long __compound_pad_1;	/* compound_head */
-			unsigned int ltm;	/* ltm */
-			uint16_t do_migration; /* lock the ltm */ 
 			uint16_t recent_accesses; /* what was the ltm when we last locked */
 			unsigned int bottom_accesses;
-			unsigned int accesses_per_mig;
-			//unsigned long lifetime_accesses;
 			unsigned int hot_utils;
 			unsigned int skewness_idx;	/* current hotness val */
 			unsigned int idx;

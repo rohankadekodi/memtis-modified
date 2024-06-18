@@ -3055,6 +3055,7 @@ bool numa_demotion_enabled = false;
 unsigned long htmm_sample_period = 199;
 unsigned long htmm_inst_sample_period = 100007;
 unsigned int htmm_thres_hot = 1;
+unsigned int htmm_bp_inc = 512;
 unsigned long htmm_cooling_period = 2000000;
 unsigned long htmm_adaptation_period = 100000;
 unsigned int htmm_split_period = 2; /* used to shift the wss of memcg */
@@ -3432,6 +3433,31 @@ static struct kobj_attribute htmm_nowarm_attr =
 	__ATTR(htmm_nowarm, 0644, htmm_nowarm_show,
 	       htmm_nowarm_store);
 
+static ssize_t htmm_bp_inc_show(struct kobject *kobj,
+				   struct kobj_attribute *attr, char *buf)
+{
+	return sysfs_emit(buf, "%lu\n", htmm_bp_inc);
+}
+
+static ssize_t htmm_bp_inc_store(struct kobject *kobj,
+				    struct kobj_attribute *attr,
+				    const char *buf, size_t count)
+{
+	int err;
+	unsigned int period;
+
+	err = kstrtouint(buf, 10, &period);
+	if (err)
+		return err;
+
+	WRITE_ONCE(htmm_bp_inc, period);
+	return count;
+}
+
+static struct kobj_attribute htmm_bp_inc_attr =
+	__ATTR(htmm_bp_inc, 0644, htmm_bp_inc_show,
+	       htmm_bp_inc_store);
+
 static ssize_t htmm_adaptation_period_show(struct kobject *kobj,
 				   struct kobj_attribute *attr, char *buf)
 {
@@ -3652,6 +3678,7 @@ static struct attribute *htmm_attrs[] = {
 	&htmm_thres_hot_attr.attr,
 	&htmm_cooling_period_attr.attr,
 	&htmm_adaptation_period_attr.attr,
+	&htmm_bp_inc_attr.attr,
 	&ksampled_min_sample_ratio_attr.attr,
 	&ksampled_max_sample_ratio_attr.attr,
 	&htmm_demotion_period_attr.attr,

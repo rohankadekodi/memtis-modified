@@ -194,36 +194,12 @@ static inline unsigned long update_ltm(unsigned long current_ltm)
 
 static inline bool inspect_page_migration_lock(pginfo_t *pginfo, int htmm_mode)
 {
-	bool stay_locked = false;
-	bool use_ltm = false;
-	if (htmm_mode == HTMM_LSTM || htmm_mode == HTMM_LSTM_PDLOCK || htmm_mode == HTMM_LSTM_DLOCK) {
-		if (pginfo->do_migration == false) {
-			stay_locked = decide_ltm_stm(pginfo->recent_accesses, pginfo->bottom_accesses);
-			if (!stay_locked) {
-				pginfo->do_migration = true;	
-			}
-		}
-	} else {
-		pginfo->do_migration = true;
-	}
-	return pginfo->do_migration;
+	return true;
 }
 
 static inline bool inspect_hugepage_migration_lock(struct page *meta_page, int htmm_mode)
 {
-	bool stay_locked = false;
-	bool use_ltm = false;
-	if (htmm_mode == HTMM_LSTM || htmm_mode == HTMM_LSTM_PDLOCK || htmm_mode == HTMM_LSTM_DLOCK) {
-		if (meta_page->do_migration == false) {
-			stay_locked = decide_ltm_stm(meta_page->recent_accesses, meta_page->bottom_accesses);
-			if (!stay_locked) {
-				meta_page->do_migration = true;	
-			}
-		} 
-	} else {
-		meta_page->do_migration = true;
-	}
-	return meta_page->do_migration;
+	return true;
 }
 
 static inline unsigned int compute_idx_lstm(unsigned long stm, unsigned long ltm)

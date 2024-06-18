@@ -414,11 +414,7 @@ static unsigned long shrink_page_list(struct list_head *page_list,
 		    goto keep_locked;
 
 		if (htmm_mode == HTMM_LSTM_PDLOCK || htmm_mode == HTMM_LSTM_DLOCK) {
-			lock_page = decide_ltm_stm(meta->recent_accesses, meta->ltm);
-			if (lock_page) {
-				meta->do_migration = false;
-				meta->bottom_accesses = meta->ltm;
-			}
+			lock_page = decide_ltm_stm(meta->recent_accesses, meta->bottom_accesses);
 		}
 
 		huge_page = 1;
@@ -497,10 +493,9 @@ static unsigned long promote_page_list(struct list_head *page_list,
 		huge_page = 1;
 		page_idx = meta->idx;
 		if (htmm_mode == HTMM_LSTM_PDLOCK) {
-			lock_page = decide_ltm_stm(meta->recent_accesses, meta->ltm);
+			lock_page = decide_ltm_stm(meta->recent_accesses, meta->bottom_accesses);
 			if (lock_page) {
-				meta->do_migration = false;
-				meta->bottom_accesses = meta->ltm;
+				meta->bottom_accesses = meta->bottom_accesses;
 			}
 		}
 	} else {
