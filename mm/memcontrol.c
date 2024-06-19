@@ -5248,6 +5248,10 @@ static struct mem_cgroup *mem_cgroup_alloc(void)
 	memcg->change_cooling_rate = 0;
 	memcg->warm_threshold = htmm_thres_hot;
 	memcg->bp_active_threshold = htmm_thres_hot;
+	memcg->cur_hot_bucket_lower_bound = htmm_thres_hot;
+	memcg->hot_bucket_last_cooling = htmm_thres_hot + 1;
+	memcg->upper_warm_threshold = memcg->warm_threshold;
+	memcg->lower_warm_threshold = memcg->warm_threshold;
 
 	/* split */
 	memcg->split_threshold = 21;

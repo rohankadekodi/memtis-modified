@@ -1429,6 +1429,10 @@ static bool __cooling(struct mm_struct *mm,
     reset_memcg_stat(memcg); 
     memcg->cooling_clock++;
 
+    if (memcg->bp_active_threshold > memcg->cur_hot_bucket_lower_bound)
+	    memcg->bp_active_threshold--;
+
+    /*
     if (htmm_mode == HTMM_ESTIMATION) {
 	    if (memcg->bp_active_threshold > 2)
 		    memcg->bp_active_threshold--;
@@ -1436,6 +1440,7 @@ static bool __cooling(struct mm_struct *mm,
 	    if (memcg->bp_active_threshold > 1)
 		    memcg->bp_active_threshold--;
     }
+    */
 
     memcg->cooled = true;
     smp_mb();
@@ -1470,6 +1475,7 @@ void __adjust_active_threshold(struct mem_cgroup *memcg)
     int idx_hot, idx_bp;
     bool check_cooling_period_inc = false;
     bool check_cooling_period_dec = false;
+    bool cooling_happened = false;
 
     //if (need_cooling(memcg))
 //	return;
@@ -1531,6 +1537,9 @@ void __adjust_active_threshold(struct mem_cgroup *memcg)
     if (memcg->cooled) {
 	/* when cooling happens, thres will be current - 1 */
 	if (idx_hot < memcg->active_threshold) {
+		if (memcg->active_threshold > memcg->cur_hot_bucket_lower_bound)
+			memcg->active_threshold--;
+		/*
 		if (htmm_mode == HTMM_ESTIMATION) {
 			if (memcg->active_threshold > 2)
 				memcg->active_threshold--;
@@ -1538,10 +1547,12 @@ void __adjust_active_threshold(struct mem_cgroup *memcg)
 			if (memcg->active_threshold > 1)
 				memcg->active_threshold--;
 		}
+		*/
 	}
 	if (idx_bp < memcg->bp_active_threshold)
 	    memcg->bp_active_threshold = idx_bp;
 	
+	cooling_happened = true;
 	memcg->cooled = false;
 	set_lru_adjusting(memcg, true);
 
@@ -1576,12 +1587,36 @@ void __adjust_active_threshold(struct mem_cgroup *memcg)
 
     /* set warm threshold */
     if (!htmm_nowarm) { // warm enabled
-	if (need_warm)
-	    memcg->warm_threshold = memcg->active_threshold - 1;
-	else
-	    memcg->warm_threshold = memcg->active_threshold;
+	    if (need_warm) {
+		    if (htmm_mode == HTMM_ESTIMATION) {
+			    if (cooling_happened) {
+				    if (memcg->active_threshold == htmm_thres_hot) {
+					    if (memcg->hot_bucket_last_cooling == htmm_thres_hot) {
+						    memcg->cur_hot_bucket_lower_bound = htmm_thres_hot + 1;
+						    memcg->active_threshold = memcg->cur_hot_bucket_lower_bound;
+					    } 
+				    }
+				    memcg->hot_bucket_last_cooling = memcg->active_threshold;
+			    }
+			    if (memcg->cur_hot_bucket_lower_bound > htmm_thres_hot) {
+				    memcg->upper_warm_threshold = memcg->active_threshold - 1;
+				    memcg->lower_warm_threshold = memcg->active_threshold - 2;
+			    } else {
+				    memcg->upper_warm_threshold = memcg->active_threshold - 1;
+				    memcg->lower_warm_threshold = memcg->active_threshold - 1;
+			    }
+			    memcg->warm_threshold = memcg->active_threshold - 1;
+		    }
+	    }
+	    else {
+		    memcg->warm_threshold = memcg->active_threshold;
+		    memcg->upper_warm_threshold = memcg->active_threshold;
+		    memcg->lower_warm_threshold = memcg->active_threshold;
+	    }
     } else { // disable warm
 	memcg->warm_threshold = memcg->active_threshold;
+	memcg->upper_warm_threshold = memcg->active_threshold;
+	memcg->lower_warm_threshold = memcg->active_threshold;
     }
 
     if (check_cooling_period_inc) {

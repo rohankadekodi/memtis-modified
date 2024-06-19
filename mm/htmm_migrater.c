@@ -410,7 +410,7 @@ static unsigned long shrink_page_list(struct list_head *page_list,
 	    if (PageTransHuge(page)) {
 		struct page *meta = get_meta_page(page);
 
-		if (meta->idx >= memcg->warm_threshold)
+		if (meta->idx >= memcg->lower_warm_threshold)
 		    goto keep_locked;
 
 		if (htmm_mode == HTMM_LSTM_PDLOCK || htmm_mode == HTMM_LSTM_DLOCK) {
@@ -424,7 +424,7 @@ static unsigned long shrink_page_list(struct list_head *page_list,
 		bool do_migration = get_pginfo_do_migration(page);
 		page_idx = idx;
 
-		if (idx >= memcg->warm_threshold)
+		if (idx >= memcg->lower_warm_threshold)
 		    goto keep_locked;
 
 		if (htmm_mode == HTMM_LSTM_PDLOCK || htmm_mode == HTMM_LSTM_DLOCK) {
@@ -682,6 +682,8 @@ static unsigned long demote_node(pg_data_t *pgdat, struct mem_cgroup *memcg,
 	if (nr_lowertier_active && nr_reclaimed < nr_lowertier_active) {
 		if (htmm_mode != HTMM_ESTIMATION) {
 			memcg->warm_threshold = memcg->active_threshold;
+			memcg->upper_warm_threshold = memcg->active_threshold;
+			memcg->lower_warm_threshold = memcg->active_threshold;
 	    }
 	}
     }
