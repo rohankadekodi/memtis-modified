@@ -3056,6 +3056,8 @@ unsigned long htmm_sample_period = 199;
 unsigned long htmm_inst_sample_period = 100007;
 unsigned int htmm_thres_hot = 1;
 unsigned int htmm_bp_inc = 512;
+unsigned int htmm_adaptive_warm = 0;
+unsigned int htmm_force_warm = 0;
 unsigned long htmm_cooling_period = 2000000;
 unsigned long htmm_adaptation_period = 100000;
 unsigned int htmm_split_period = 2; /* used to shift the wss of memcg */
@@ -3433,6 +3435,57 @@ static struct kobj_attribute htmm_nowarm_attr =
 	__ATTR(htmm_nowarm, 0644, htmm_nowarm_show,
 	       htmm_nowarm_store);
 
+static ssize_t htmm_force_warm_show(struct kobject *kobj,
+				   struct kobj_attribute *attr, char *buf)
+{
+	return sysfs_emit(buf, "%u\n", htmm_force_warm);
+}
+
+static ssize_t htmm_force_warm_store(struct kobject *kobj,
+				    struct kobj_attribute *attr,
+				    const char *buf, size_t count)
+{
+	int err;
+	unsigned int period;
+
+	err = kstrtouint(buf, 10, &period);
+	if (err)
+		return err;
+
+	WRITE_ONCE(htmm_force_warm, period);
+	return count;
+}
+
+static struct kobj_attribute htmm_force_warm_attr =
+	__ATTR(htmm_force_warm, 0644, htmm_force_warm_show,
+	       htmm_force_warm_store);
+
+static ssize_t htmm_adaptive_warm_show(struct kobject *kobj,
+				   struct kobj_attribute *attr, char *buf)
+{
+	return sysfs_emit(buf, "%u\n", htmm_adaptive_warm);
+}
+
+static ssize_t htmm_adaptive_warm_store(struct kobject *kobj,
+				    struct kobj_attribute *attr,
+				    const char *buf, size_t count)
+{
+	int err;
+	unsigned int period;
+
+	err = kstrtouint(buf, 10, &period);
+	if (err)
+		return err;
+
+	WRITE_ONCE(htmm_adaptive_warm, period);
+	return count;
+}
+
+static struct kobj_attribute htmm_adaptive_warm_attr =
+	__ATTR(htmm_adaptive_warm, 0644, htmm_adaptive_warm_show,
+	       htmm_adaptive_warm_store);
+
+
 static ssize_t htmm_bp_inc_show(struct kobject *kobj,
 				   struct kobj_attribute *attr, char *buf)
 {
@@ -3678,7 +3731,6 @@ static struct attribute *htmm_attrs[] = {
 	&htmm_thres_hot_attr.attr,
 	&htmm_cooling_period_attr.attr,
 	&htmm_adaptation_period_attr.attr,
-	&htmm_bp_inc_attr.attr,
 	&ksampled_min_sample_ratio_attr.attr,
 	&ksampled_max_sample_ratio_attr.attr,
 	&htmm_demotion_period_attr.attr,
@@ -3686,6 +3738,9 @@ static struct attribute *htmm_attrs[] = {
 	&ksampled_soft_cpu_quota_attr.attr,
 	&htmm_thres_split_attr.attr,
 	&htmm_nowarm_attr.attr,
+	&htmm_force_warm_attr.attr,
+	&htmm_adaptive_warm_attr.attr,
+	&htmm_bp_inc_attr.attr,
 	&htmm_util_weight_attr.attr,
 	&htmm_mode_attr.attr,
 	&htmm_gamma_attr.attr,

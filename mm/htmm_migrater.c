@@ -680,11 +680,11 @@ static unsigned long demote_node(pg_data_t *pgdat, struct mem_cgroup *memcg,
 	nr_lowertier_active = nr_lowertier_active < nr_to_reclaim ?
 			nr_lowertier_active : nr_to_reclaim;
 	if (nr_lowertier_active && nr_reclaimed < nr_lowertier_active) {
-		if (htmm_mode != HTMM_ESTIMATION) {
+		if (htmm_mode != htmm_force_warm) {
 			memcg->warm_threshold = memcg->active_threshold;
 			memcg->upper_warm_threshold = memcg->active_threshold;
 			memcg->lower_warm_threshold = memcg->active_threshold;
-	    }
+		}
 	}
     }
 

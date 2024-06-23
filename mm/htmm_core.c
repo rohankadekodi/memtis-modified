@@ -1504,7 +1504,12 @@ void __adjust_active_threshold(struct mem_cgroup *memcg)
     if (htmm_mode == HTMM_ESTIMATION) {
 	    if (idx_hot == 1)
 		    idx_hot++;
-	    need_warm = true;
+	    if (htmm_force_warm) {
+		    need_warm = true;
+	    } else {
+		    if (nr_active < (max_nr_pages * 75 / 100))
+			    need_warm = true;
+	    }
     } else {
 	    if (nr_active < (max_nr_pages * 75 / 100))
 		    need_warm = true;
@@ -1589,23 +1594,34 @@ void __adjust_active_threshold(struct mem_cgroup *memcg)
     if (!htmm_nowarm) { // warm enabled
 	    if (need_warm) {
 		    if (htmm_mode == HTMM_ESTIMATION) {
-			    if (cooling_happened) {
-				    if (memcg->active_threshold == htmm_thres_hot) {
-					    if (memcg->hot_bucket_last_cooling == htmm_thres_hot) {
-						    memcg->cur_hot_bucket_lower_bound = htmm_thres_hot + 1;
-						    memcg->active_threshold = memcg->cur_hot_bucket_lower_bound;
-					    } 
+			    if (htmm_adaptive_warm == 1) {
+				    if (cooling_happened) {
+					    if (memcg->active_threshold == htmm_thres_hot) {
+						    if (memcg->hot_bucket_last_cooling == htmm_thres_hot) {
+							    memcg->cur_hot_bucket_lower_bound = htmm_thres_hot + 1;
+							    memcg->active_threshold = memcg->cur_hot_bucket_lower_bound;
+						    } 
+					    }
+					    memcg->hot_bucket_last_cooling = memcg->active_threshold;
 				    }
-				    memcg->hot_bucket_last_cooling = memcg->active_threshold;
-			    }
-			    if (memcg->cur_hot_bucket_lower_bound > htmm_thres_hot) {
-				    memcg->upper_warm_threshold = memcg->active_threshold - 1;
-				    memcg->lower_warm_threshold = memcg->active_threshold - 2;
+				    if (memcg->cur_hot_bucket_lower_bound > htmm_thres_hot &&
+					memcg->active_threshold == memcg->cur_hot_bucket_lower_bound) {
+					    memcg->upper_warm_threshold = memcg->active_threshold - 1;
+					    memcg->lower_warm_threshold = memcg->active_threshold - 2;
+				    } else {
+					    memcg->upper_warm_threshold = memcg->active_threshold - 1;
+					    memcg->lower_warm_threshold = memcg->active_threshold - 1;
+				    }
+				    memcg->warm_threshold = memcg->active_threshold - 1;
 			    } else {
+				    memcg->warm_threshold = memcg->active_threshold - 1;
 				    memcg->upper_warm_threshold = memcg->active_threshold - 1;
 				    memcg->lower_warm_threshold = memcg->active_threshold - 1;
 			    }
+		    } else {
 			    memcg->warm_threshold = memcg->active_threshold - 1;
+			    memcg->upper_warm_threshold = memcg->active_threshold - 1;
+			    memcg->lower_warm_threshold = memcg->active_threshold - 1;
 		    }
 	    }
 	    else {
