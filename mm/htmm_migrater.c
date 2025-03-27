@@ -607,6 +607,7 @@ static unsigned long demote_lruvec(unsigned long nr_to_reclaim, short priority,
 	    nr_to_scan = lruvec_lru_size(lruvec, lru, MAX_NR_ZONES);
 	} else {
 	    nr_to_scan = lruvec_lru_size(lruvec, lru, MAX_NR_ZONES) >> priority;
+	    //nr_to_scan = lruvec_lru_size(lruvec, lru, MAX_NR_ZONES);
 
 	    if (nr_to_scan < nr_to_reclaim)
 		nr_to_scan = nr_to_reclaim * 11 / 10; // because warm pages are not demoted
@@ -849,6 +850,7 @@ re_cooling:
     nr_to_scan = lruvec_lru_size(lruvec, lru, MAX_NR_ZONES);
     do {
 	unsigned long scan = nr_to_scan >> 3; /* 12.5% */
+	//unsigned long scan = nr_to_scan; /* 12.5% */
 
 	if (!scan)
 	    scan = nr_to_scan;
@@ -989,6 +991,7 @@ static void adjusting_node(pg_data_t *pgdat, struct mem_cgroup *memcg, bool acti
     nr_to_scan = lruvec_lru_size(lruvec, lru, MAX_NR_ZONES);
     do {
 	unsigned long scan = nr_to_scan >> 3;
+	//unsigned long scan = nr_to_scan;
 
 	if (!scan)
 	    scan = nr_to_scan;
