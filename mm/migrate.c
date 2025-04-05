@@ -1657,6 +1657,7 @@ int migrate_pages_internal(struct list_head *from, new_page_t get_new_page,
 	int rc, nr_subpages;
 	LIST_HEAD(ret_pages);
 	bool nosplit = (reason == MR_NUMA_MISPLACED);
+	struct mem_cgroup *memcg = NULL;
 
 	trace_mm_migrate_pages_start(mode, reason);
 
@@ -1695,7 +1696,7 @@ retry:
 					page_idx = meta->idx;
 					stm_accesses = meta->recent_accesses; 	
 					ltm_accesses = meta->bottom_accesses;
-					virtual_address = get_page_virtual_address(page); 
+					virtual_address = get_page_virtual_address(page);
 				}
 				rc = unmap_and_move_huge_page(get_new_page,
 						put_new_page, private, page,
@@ -1710,7 +1711,7 @@ retry:
 						page_idx = meta->idx;
 						stm_accesses = (unsigned int)meta->recent_accesses; 	
 						ltm_accesses = (unsigned int)meta->bottom_accesses;
-						virtual_address = get_page_virtual_address(page); 
+						virtual_address = get_page_virtual_address(page);
 					} else {
 						/*
 						if (!PageAnon(page)) {
@@ -1731,7 +1732,8 @@ retry:
 						}
 						stm_accesses = (unsigned int)get_pginfo_lifetime_accesses(page);
 						ltm_accesses = (unsigned int)get_pginfo_ltm_accesses(page);
-						virtual_address = get_page_virtual_address(page); 
+						virtual_address = get_page_virtual_address(page);
+						total_accesses = phase_num;
 					}
 				}
 				rc = unmap_and_move(get_new_page, put_new_page,
@@ -1802,8 +1804,8 @@ retry:
 				break;
 			case MIGRATEPAGE_SUCCESS:
 				if (from_htmm) {
-					if (htmm_memcg) {
-						total_accesses = phase_num;	
+				        if (htmm_memcg) {
+					      total_accesses = htmm_memcg->nr_sampled;
 					}
 					if (is_thp) {
 						nr_thp_succeeded++;

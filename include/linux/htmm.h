@@ -114,7 +114,7 @@ extern void set_lru_adjusting(struct mem_cgroup *memcg, bool inc_thres);
 
 extern void update_pginfo(pid_t pid, unsigned long address, enum events e);
 extern void bpf_register_memory_access(unsigned long address, unsigned long memtier, unsigned long bottom_accesses, unsigned long ltm_accesses, unsigned long bucket_idx);
-extern void bpf_register_memory_access_ltm(unsigned long address, unsigned long bottom_accesses, unsigned long memtier, unsigned long hot_threshold, unsigned long total_accesses);
+extern void bpf_register_memory_access_ltm(unsigned long address, unsigned long ltm_accesses, unsigned long stm_accesses, unsigned long memtier, struct mem_cgroup *memcg);
 //extern void bpf_register_memory_access_ltm(unsigned long address, unsigned long stm_accesses, unsigned long ltm_accesses, unsigned long total_accesses);
 extern void bpf_register_cooling(unsigned long address, unsigned long total_accesses);
 extern void bpf_register_adaptation(unsigned long warm_idx, unsigned long hot_idx, unsigned long total_accesses);

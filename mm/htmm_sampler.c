@@ -429,6 +429,9 @@ int ksamplingd_init(pid_t pid, int node)
     if (access_sampling)
 	return 0;
 
+    if (htmm_memcg || process_pid != -2 || phase_num != 0)
+        return 0;
+
     ret = pebs_init(pid, node);
     if (ret) {
 	printk("htmm__perf_event_init failure... ERROR:%d\n", ret);
@@ -443,6 +446,9 @@ void ksamplingd_exit(void)
     if (access_sampling) {
 	kthread_stop(access_sampling);
 	access_sampling = NULL;
+	htmm_memcg = NULL;
+	phase_num = 0;
+	process_pid = -2;
     }
     pebs_disable();
 }

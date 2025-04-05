@@ -121,7 +121,7 @@ void prep_transhuge_page_for_htmm(struct vm_area_struct *vma,
     if (vma->vm_mm->htmm_enabled) {
 	memcg = get_mem_cgroup_from_mm(vma->vm_mm);
 	total_accesses = memcg->total_accesses;
-	bpf_register_page_alloc(virtual_address, 1, phase_num);
+	bpf_register_page_alloc(virtual_address, 1, memcg->nr_sampled);
 
 	__prep_transhuge_page_for_htmm(vma->vm_mm, page);
     }
@@ -317,7 +317,7 @@ void check_base_cooling(pginfo_t *pginfo, struct page *page, bool locked)
 	unsigned int diff = memcg_cclock - pginfo->cooling_clock;    
 	int j;
 	    
-	cur_idx = compute_idx(memcg->nr_sampled, memcg->last_cooling_sample, pginfo->recent_accesses, pginfo->bottom_accesses, pginfo->bottom_accesses, htmm_cooling_period, htmm_mode);
+	cur_idx = compute_idx(memcg->nr_sampled - 1, memcg->last_cooling_sample, pginfo->recent_accesses, pginfo->bottom_accesses, pginfo->bottom_accesses, htmm_cooling_period, htmm_mode);
 	if (cur_idx >= (memcg->bp_active_threshold))
 	    pginfo->may_hot = true;
 	else
@@ -338,7 +338,7 @@ void check_base_cooling(pginfo_t *pginfo, struct page *page, bool locked)
 	  //  pginfo->total_accesses = 1;
 
 	inspect_page_migration_lock(pginfo, htmm_mode);
-	cur_idx = compute_idx(memcg->nr_sampled, memcg->last_cooling_sample, pginfo->recent_accesses, pginfo->bottom_accesses, pginfo->bottom_accesses, htmm_cooling_period, htmm_mode);
+	cur_idx = compute_idx(memcg->nr_sampled - 1, memcg->last_cooling_sample, pginfo->recent_accesses, pginfo->bottom_accesses, pginfo->bottom_accesses, htmm_cooling_period, htmm_mode);
 
 	memcg->hotness_hg[cur_idx]++;
 	memcg->ebp_hotness_hg[cur_idx]++;
@@ -371,7 +371,7 @@ int set_page_coolstatus(struct page *page, pte_t *pte, struct mm_struct *mm, uns
 
     virtual_address = (fault_address & PAGE_MASK);
     if (virtual_address != 1) {
-	    bpf_register_page_alloc(virtual_address, 0, phase_num);
+	    bpf_register_page_alloc(virtual_address, 0, memcg->nr_sampled);
     }
     
     hotness_factor = get_accesses_from_idx(memcg->active_threshold + 1);
@@ -622,13 +622,13 @@ void putback_split_pages(struct list_head *split_list, struct lruvec *lruvec)
 	if (PageActive(page)) {
 	    list_add(&page->lru, &l_active);
 	    if (virtual_address != 1) {
-		    bpf_register_page_add_to_mig_queue_promotion(virtual_address, phase_num, 0, 0);
+		    bpf_register_page_add_to_mig_queue_promotion(virtual_address, memcg->nr_sampled, 0, 0);
 	    }
 	}
 	else {
 	    list_add(&page->lru, &l_inactive);
 	    if (virtual_address != 1) {
-		    bpf_register_page_add_to_mig_queue_demotion(virtual_address, phase_num, 0, 0);
+		    bpf_register_page_add_to_mig_queue_demotion(virtual_address, memcg->nr_sampled, 0, 0);
 	    }
 	}
     }
@@ -891,6 +891,7 @@ void move_page_to_active_lru(struct page *page, unsigned long total_accesses, un
     struct lruvec *lruvec;
     unsigned long virtual_address;
     bool is_locked;
+    struct mem_cgroup *memcg = page_memcg(page);
     LIST_HEAD(l_active);
 
     lruvec = mem_cgroup_page_lruvec(page);
@@ -917,7 +918,7 @@ void move_page_to_active_lru(struct page *page, unsigned long total_accesses, un
     //is_locked = true; 
     virtual_address = get_page_virtual_address(page); 
     if (virtual_address != 1) {
-	    bpf_register_page_add_to_mig_queue_promotion(virtual_address, phase_num, stm, ltm);
+	    bpf_register_page_add_to_mig_queue_promotion(virtual_address, memcg->nr_sampled, stm, ltm);
     }
     list_move(&page->lru, &l_active);
     update_lru_size(lruvec, page_lru(page), page_zonenum(page),
@@ -938,6 +939,7 @@ void move_page_to_inactive_lru(struct page *page, unsigned long total_accesses, 
     struct lruvec *lruvec;
     unsigned long virtual_address;
     bool is_locked;
+    struct mem_cgroup *memcg = page_memcg(page);
     LIST_HEAD(l_inactive);
 
     lruvec = mem_cgroup_page_lruvec(page);
@@ -961,7 +963,7 @@ void move_page_to_inactive_lru(struct page *page, unsigned long total_accesses, 
     is_locked = true; 
     //is_locked = get_pginfo_do_migration(page);
     if (virtual_address != 1) {
-	    bpf_register_page_add_to_mig_queue_demotion(virtual_address, phase_num, stm, ltm);
+	    bpf_register_page_add_to_mig_queue_demotion(virtual_address, memcg->nr_sampled, stm, ltm);
     }
     list_move(&page->lru, &l_inactive);
     update_lru_size(lruvec, page_lru(page), page_zonenum(page),
@@ -1060,8 +1062,8 @@ static void update_base_page(struct vm_area_struct *vma,
     hot = cur_idx >= memcg->active_threshold;
     virtual_address = get_page_virtual_address(page); 
     if (virtual_address != 1) {
-	    bpf_register_memory_access_ltm((unsigned long) virtual_address, pginfo->bottom_accesses, dram, memcg->active_threshold, phase_num);
-	    compute_estimate_access((unsigned long)virtual_address, memcg->nr_sampled, memcg->last_cooling_sample, pginfo->recent_accesses, pginfo->bottom_accesses, htmm_cooling_period);
+      bpf_register_memory_access_ltm((unsigned long) virtual_address, pginfo->bottom_accesses, pginfo->recent_accesses, dram, memcg);
+      compute_estimate_access((unsigned long)virtual_address, memcg->nr_sampled, memcg->last_cooling_sample, pginfo->recent_accesses, pginfo->bottom_accesses, htmm_cooling_period);
     }
     
     if (page_unlocked) {
@@ -1171,8 +1173,8 @@ static void update_huge_page(struct vm_area_struct *vma, pmd_t *pmd,
     hot = cur_idx >= memcg->active_threshold;
     virtual_address = get_page_virtual_address(page); 
     if (virtual_address != 1) {
-	    bpf_register_memory_access_ltm((unsigned long) address, meta_page->bottom_accesses, dram, memcg->active_threshold, phase_num);
-	    compute_estimate_access((unsigned long)address, memcg->nr_sampled, memcg->last_cooling_sample, meta_page->recent_accesses, meta_page->bottom_accesses, htmm_cooling_period);
+      bpf_register_memory_access_ltm((unsigned long) address, meta_page->bottom_accesses, meta_page->recent_accesses, dram, memcg);
+      compute_estimate_access((unsigned long)address, memcg->nr_sampled, memcg->last_cooling_sample, meta_page->recent_accesses, meta_page->bottom_accesses, htmm_cooling_period);
     }
 
 
@@ -1497,13 +1499,15 @@ void __adjust_active_threshold(struct mem_cgroup *memcg)
 	    break;
 	nr_active += nr_pages;
     }
-    if (idx_hot != 15)
-	idx_hot++;
 
+    if ((idx_hot != 15 && htmm_mode != HTMM_ESTIMATION) || (idx_hot < 0))
+      idx_hot++;
 
+    BUG_ON(idx_hot < 0);
+    
     if (htmm_mode == HTMM_ESTIMATION) {
-	    if (idx_hot == 1)
-		    idx_hot++;
+	    if (idx_hot <= htmm_thres_hot)
+		    idx_hot = htmm_thres_hot;
 	    if (htmm_force_warm) {
 		    need_warm = true;
 	    } else {
@@ -1523,11 +1527,14 @@ void __adjust_active_threshold(struct mem_cgroup *memcg)
 	    break;
 	nr_active += nr_pages;
     }
-    if (idx_bp != 15)
+    if ((idx_bp != 15 && htmm_mode != HTMM_ESTIMATION) || (idx_bp < 0))
 	idx_bp++;
+
+    BUG_ON(idx_bp < 0);
+
     if (htmm_mode == HTMM_ESTIMATION) {
-	    if (idx_bp == 1)
-		    idx_bp++;
+	    if (idx_bp <= htmm_thres_hot)
+		    idx_bp = htmm_thres_hot;
     }
 
     spin_unlock(&memcg->access_lock);
@@ -1538,115 +1545,147 @@ void __adjust_active_threshold(struct mem_cgroup *memcg)
     if (idx_bp < htmm_thres_hot)
 	idx_bp = htmm_thres_hot;
 
+
+    //if (memcg->active_threshold >= 5)
+    //need_warm = false;
+
     /* some pages may not be reflected in the histogram when cooling happens */
     if (memcg->cooled) {
-	/* when cooling happens, thres will be current - 1 */
+      /* when cooling happens, thres will be current - 1 */
+      cooling_happened = true;
+      memcg->cooled = false;
+
+      if (htmm_mode != HTMM_ESTIMATION) {
 	if (idx_hot < memcg->active_threshold) {
-		if (memcg->active_threshold > memcg->cur_hot_bucket_lower_bound)
-			memcg->active_threshold--;
-		/*
-		if (htmm_mode == HTMM_ESTIMATION) {
-			if (memcg->active_threshold > 2)
-				memcg->active_threshold--;
-		} else {
-			if (memcg->active_threshold > 1)
-				memcg->active_threshold--;
-		}
-		*/
+	  if (memcg->active_threshold > memcg->cur_hot_bucket_lower_bound)
+	    memcg->active_threshold--;
+	  /*
+	    if (htmm_mode == HTMM_ESTIMATION) {
+	    if (memcg->active_threshold > 2)
+	    memcg->active_threshold--;
+	    } else {
+	    if (memcg->active_threshold > 1)
+	    memcg->active_threshold--;
+	    }
+	  */
 	}
 	if (idx_bp < memcg->bp_active_threshold)
-	    memcg->bp_active_threshold = idx_bp;
+	  memcg->bp_active_threshold = idx_bp;
 	
 	cooling_happened = true;
 	memcg->cooled = false;
 	set_lru_adjusting(memcg, true);
 
 	if (memcg->need_split) {
-	    /* set the target number of pages to be split */
-	    set_memcg_nr_split(memcg);
-	    /* set the split factor thres */
-	    set_memcg_split_thres(memcg);
-	    /* reset stat for split */
-	    memcg->nr_sampled_for_split = 0;
-	    memcg->need_split = false;
-	    //trace_printk("memcg->nr_split: %lu, memcg->split_thres: %lu\n", memcg->nr_split, memcg->split_threshold);
+	  /* set the target number of pages to be split */
+	  set_memcg_nr_split(memcg);
+	  /* set the split factor thres */
+	  set_memcg_split_thres(memcg);
+	  /* reset stat for split */
+	  memcg->nr_sampled_for_split = 0;
+	  memcg->need_split = false;
+	  //trace_printk("memcg->nr_split: %lu, memcg->split_thres: %lu\n", memcg->nr_split, memcg->split_threshold);
 	}
+      }
     }
     else { /* normal case */
-	if (idx_hot > memcg->active_threshold) {
-	    //printk("thres: %d -> %d\n", memcg->active_threshold, idx_hot);
+      if (htmm_mode == HTMM_ESTIMATION) {
+	if (idx_hot != memcg->active_threshold) {
+	  //printk("thres: %d -> %d\n", memcg->active_threshold, idx_hot);
+	  if (idx_hot >= memcg->cur_hot_bucket_lower_bound)
 	    memcg->active_threshold = idx_hot;
-	    set_lru_adjusting(memcg, true);
+	  else
+	    memcg->active_threshold = memcg->cur_hot_bucket_lower_bound;
+
+	  set_lru_adjusting(memcg, true);
 	}
 	else if (memcg->split_happen && htmm_thres_split &&
-		idx_hot < memcg->active_threshold) {
-	    /* if split happens, histogram may be changed.
-	     * Thus, hot-thres could be decreased */
-	    memcg->active_threshold = idx_hot;
-	    set_lru_adjusting(memcg, true);
-	    //memcg->split_happen = false;
+		 idx_hot < memcg->active_threshold) {
+	  /* if split happens, histogram may be changed.
+	   * Thus, hot-thres could be decreased */
+	  memcg->active_threshold = idx_hot;
+	  set_lru_adjusting(memcg, true);
+	  //memcg->split_happen = false;
 	}
 	/* estimated base page histogram */
 	memcg->bp_active_threshold = idx_bp;
+
+      } else {
+	if (idx_hot > memcg->active_threshold) {
+	  memcg->active_threshold = idx_hot;
+	  set_lru_adjusting(memcg, true);
+	}
+	else if (memcg->split_happen && htmm_thres_split &&
+		 idx_hot < memcg->active_threshold) {
+	  /* if split happens, histogram may be changed.
+	   * Thus, hot-thres could be decreased */
+	  memcg->active_threshold = idx_hot;
+	  set_lru_adjusting(memcg, true);
+	  //memcg->split_happen = false;
+	}
+	/* estimated base page histogram */
+	memcg->bp_active_threshold = idx_bp;
+      }
     }
 
     /* set warm threshold */
     if (!htmm_nowarm) { // warm enabled
-	    if (need_warm) {
-		    if (htmm_mode == HTMM_ESTIMATION) {
-			    if (htmm_adaptive_warm == 1) {
-				    if (cooling_happened) {
-					    if (memcg->active_threshold == htmm_thres_hot) {
-						    if (memcg->hot_bucket_last_cooling == htmm_thres_hot) {
-							    memcg->cur_hot_bucket_lower_bound = htmm_thres_hot + 1;
-							    memcg->active_threshold = memcg->cur_hot_bucket_lower_bound;
-						    } 
-					    }
-					    memcg->hot_bucket_last_cooling = memcg->active_threshold;
-				    }
-				    if (memcg->cur_hot_bucket_lower_bound > htmm_thres_hot &&
-					memcg->active_threshold == memcg->cur_hot_bucket_lower_bound) {
-					    memcg->upper_warm_threshold = memcg->active_threshold - 1;
-					    memcg->lower_warm_threshold = memcg->active_threshold - 2;
-				    } else {
-					    memcg->upper_warm_threshold = memcg->active_threshold - 1;
-					    memcg->lower_warm_threshold = memcg->active_threshold - 1;
-				    }
-				    memcg->warm_threshold = memcg->active_threshold - 1;
-			    } else {
-				    memcg->warm_threshold = memcg->active_threshold - 1;
-				    memcg->upper_warm_threshold = memcg->active_threshold - 1;
-				    memcg->lower_warm_threshold = memcg->active_threshold - 1;
-			    }
-		    } else {
-			    memcg->warm_threshold = memcg->active_threshold - 1;
-			    memcg->upper_warm_threshold = memcg->active_threshold - 1;
-			    memcg->lower_warm_threshold = memcg->active_threshold - 1;
-		    }
+      if (need_warm) {
+	if (htmm_mode == HTMM_ESTIMATION) {
+	  if (htmm_adaptive_warm == 1) {
+	    if (cooling_happened) {
+	      if (memcg->active_threshold == htmm_thres_hot) {
+		if (memcg->hot_bucket_last_cooling == htmm_thres_hot) {
+		  memcg->cur_hot_bucket_lower_bound = htmm_thres_hot + 1;
+		  memcg->active_threshold = memcg->cur_hot_bucket_lower_bound;
+		} 
+	      }
+	      memcg->hot_bucket_last_cooling = memcg->active_threshold;
 	    }
-	    else {
-		    memcg->warm_threshold = memcg->active_threshold;
-		    memcg->upper_warm_threshold = memcg->active_threshold;
-		    memcg->lower_warm_threshold = memcg->active_threshold;
+	    if (memcg->cur_hot_bucket_lower_bound > htmm_thres_hot &&
+		memcg->active_threshold == memcg->cur_hot_bucket_lower_bound) {
+	      memcg->upper_warm_threshold = memcg->active_threshold - 1;
+	      memcg->lower_warm_threshold = memcg->active_threshold - 2;
+	    } else {
+	      memcg->upper_warm_threshold = memcg->active_threshold - 1;
+	      memcg->lower_warm_threshold = memcg->active_threshold - 1;
 	    }
-    } else { // disable warm
+	    memcg->warm_threshold = memcg->active_threshold - 1;
+	  } else {
+	    memcg->warm_threshold = memcg->active_threshold - 1;
+	    memcg->upper_warm_threshold = memcg->active_threshold - 1;
+	    memcg->lower_warm_threshold = memcg->active_threshold - 1;
+	  }
+	} else {
+	  memcg->warm_threshold = memcg->active_threshold - 1;
+	  memcg->upper_warm_threshold = memcg->active_threshold - 1;
+	  memcg->lower_warm_threshold = memcg->active_threshold - 1;
+	}
+      }
+      else {
 	memcg->warm_threshold = memcg->active_threshold;
 	memcg->upper_warm_threshold = memcg->active_threshold;
 	memcg->lower_warm_threshold = memcg->active_threshold;
+      }
+    } else { // disable warm
+      memcg->warm_threshold = memcg->active_threshold;
+      memcg->upper_warm_threshold = memcg->active_threshold;
+      memcg->lower_warm_threshold = memcg->active_threshold;
     }
 
     if (check_cooling_period_inc) {
-	if (memcg->active_threshold <= 1) {
-		memcg->change_cooling_rate = 1;
-	}
+      if (memcg->active_threshold <= 1) {
+	memcg->change_cooling_rate = 1;
+      }
     } else if (check_cooling_period_dec) {
-	if (memcg->active_threshold == 15) {
-		memcg->change_cooling_rate = -1;
-	}
+      if (memcg->active_threshold == 15) {
+	memcg->change_cooling_rate = -1;
+      }
     } else {
-	memcg->change_cooling_rate = 0;
+      memcg->change_cooling_rate = 0;
     }
 
+    //printk(KERN_INFO "%s: [AFTER] warm threshold = %u, active_threshold = %u, htmm_force_warm = %u, htmm_adaptive_warm = %u, need_warm = %d, memcg->cur_hot_bucket_lower_bound = %u, htmm_thres_hot = %u, idx_hot = %d\n", __func__, memcg->warm_threshold, memcg->active_threshold, htmm_force_warm, htmm_adaptive_warm, need_warm, memcg->cur_hot_bucket_lower_bound, htmm_thres_hot, idx_hot);
     bpf_register_adaptation(memcg->warm_threshold, memcg->active_threshold, phase_num);
 }
 
@@ -1660,7 +1699,7 @@ static bool need_memcg_cooling (struct mem_cgroup *memcg)
     return false;
 }
 
-noinline void bpf_register_memory_access_ltm(unsigned long address, unsigned long bottom_accesses, unsigned long memtier, unsigned long hot_threshold, unsigned long total_accesses)
+noinline void bpf_register_memory_access_ltm(unsigned long address, unsigned long ltm_accesses, unsigned long stm_accesses, unsigned long memtier, struct mem_cgroup *memcg)
 {
 	BUG_ON(address == 0);
 	asm volatile("" ::: "memory");
@@ -1755,7 +1794,7 @@ void update_pginfo(pid_t pid, unsigned long address, enum events e)
 	    memcg->prev_max_dram_sampled >>= 1;
 	    memcg->prev_max_dram_sampled += memcg->max_dram_sampled;
 	    memcg->max_dram_sampled = 0;
-	    bpf_register_cooling(address, phase_num);
+	    bpf_register_cooling(address, memcg->nr_sampled);
 
 	    /* split decision period */
 	    /* split should be performed after cooling due to skewness factor */
@@ -1794,7 +1833,7 @@ void update_pginfo(pid_t pid, unsigned long address, enum events e)
     }
 
     /* threshold adaptation */
-    if (memcg->nr_sampled % htmm_adaptation_period == 0) {
+    else if (memcg->nr_sampled % htmm_adaptation_period == 0) {
 	    __adjust_active_threshold(memcg);
     }
 
