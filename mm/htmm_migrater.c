@@ -373,6 +373,48 @@ noinline void bpf_demotion_loop_hook(unsigned long demotion_ctr, unsigned long n
 }
 
 
+static unsigned long compute_estimate_access(unsigned long nr_samples, unsigned long last_cooling_sample, unsigned long recent_accesses, unsigned long bottom_accesses, unsigned long htmm_cooling_period)
+{
+	long long alpha, estimation, estimation_1;
+	alpha = nr_samples - last_cooling_sample;
+	estimation_1 = (long long)recent_accesses - (long long)(alpha * (long long)(bottom_accesses) / htmm_cooling_period);
+	if (estimation_1 < 0)
+		estimation_1 = 0;
+	else
+		estimation_1 = estimation_1 / 2;
+
+	estimation = bottom_accesses + estimation_1;
+	return estimation;
+}
+
+
+static bool htmm_estimation_check_if_cold(unsigned long recent_accesses,
+					  unsigned long bottom_accesses,
+					  int idx, struct mem_cgroup *memcg)
+{
+  if (idx >= memcg->active_threshold)
+    return false;
+
+  if (idx < memcg->warm_threshold)
+    return true;
+
+  // idx == memcg->warm_threshold
+  if (idx < 4)
+    return false;
+
+  unsigned long estimation = compute_estimate_access(memcg->nr_sampled,
+						     memcg->last_cooling_sample,
+						     recent_accesses,
+						     bottom_accesses,
+						     htmm_cooling_period);
+  unsigned long bucket_accesses = get_accesses_from_idx(idx);
+  unsigned long bucket_middle_accesses = bucket_accesses + (bucket_accesses * 3 / 4);
+  if (estimation >= bucket_middle_accesses)
+    return false;
+
+  return true;
+}
+
 static unsigned long shrink_page_list(struct list_head *page_list,
 	pg_data_t* pgdat, struct mem_cgroup *memcg, bool shrink_active,
 	unsigned long nr_to_reclaim)
@@ -410,8 +452,16 @@ static unsigned long shrink_page_list(struct list_head *page_list,
 	    if (PageTransHuge(page)) {
 		struct page *meta = get_meta_page(page);
 
-		if (meta->idx >= memcg->lower_warm_threshold)
+		if (htmm_mode == HTMM_ESTIMATION) {
+		  if (htmm_estimation_check_if_cold(meta->recent_accesses,
+						    meta->bottom_accesses,
+						    meta->idx, memcg) == false)
 		    goto keep_locked;
+		} else {
+		  if (meta->idx >= memcg->lower_warm_threshold) {
+		    goto keep_locked;
+		  }
+		}
 
 		if (htmm_mode == HTMM_LSTM_PDLOCK || htmm_mode == HTMM_LSTM_DLOCK) {
 			lock_page = decide_ltm_stm(meta->recent_accesses, meta->bottom_accesses);
@@ -422,10 +472,19 @@ static unsigned long shrink_page_list(struct list_head *page_list,
 	    } else {
 		unsigned int idx = get_pginfo_idx(page, memcg);
 		bool do_migration = get_pginfo_do_migration(page);
+		unsigned long bottom_accesses = get_pginfo_ltm_accesses(page);
+		unsigned long recent_accesses = get_pginfo_stm_accesses(page);
 		page_idx = idx;
 
-		if (idx >= memcg->lower_warm_threshold)
+		if (htmm_mode == HTMM_ESTIMATION) {
+		  if (htmm_estimation_check_if_cold(recent_accesses,
+						    bottom_accesses,
+						    idx, memcg) == false)
 		    goto keep_locked;
+		} else {
+		  if (idx >= memcg->lower_warm_threshold)
+		    goto keep_locked;
+		}
 
 		if (htmm_mode == HTMM_LSTM_PDLOCK || htmm_mode == HTMM_LSTM_DLOCK) {
 			check_set_pginfo_lock_page(page);

@@ -196,6 +196,7 @@ int page_check_hotness(struct page *page, struct mem_cgroup *memcg);
 int get_pginfo_idx(struct page *page, struct mem_cgroup *memcg);
 unsigned long get_pginfo_lifetime_accesses(struct page *page);
 unsigned long get_pginfo_ltm_accesses(struct page *page);
+unsigned long get_pginfo_stm_accesses(struct page *page);
 unsigned long get_pginfo_accesses_per_mig(struct page *page);
 bool check_set_pginfo_lock_page(struct page *page);
 bool get_pginfo_do_migration(struct page *page);
