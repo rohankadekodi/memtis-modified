@@ -1426,28 +1426,22 @@ static bool __cooling(struct mm_struct *mm,
 	    }
     }
 
+    //if ((htmm_mode == HTMM_ESTIMATION &&
+    // memcg->nr_sampled % (5*htmm_cooling_period) == 0) ||
+    //htmm_mode != HTMM_ESTIMATION) {
     spin_lock(&memcg->access_lock);
 
     reset_memcg_stat(memcg); 
     memcg->cooling_clock++;
 
     if (memcg->bp_active_threshold > memcg->cur_hot_bucket_lower_bound)
-	    memcg->bp_active_threshold--;
-
-    /*
-    if (htmm_mode == HTMM_ESTIMATION) {
-	    if (memcg->bp_active_threshold > 2)
-		    memcg->bp_active_threshold--;
-    } else {
-	    if (memcg->bp_active_threshold > 1)
-		    memcg->bp_active_threshold--;
-    }
-    */
+      memcg->bp_active_threshold--;
 
     memcg->cooled = true;
     smp_mb();
     spin_unlock(&memcg->access_lock);
     set_lru_cooling(mm);
+    //}
     memcg->last_cooling_sample = memcg->nr_sampled;
     /*
     if (memcg->change_cooling_rate == 1) {
@@ -1470,11 +1464,11 @@ static bool __cooling(struct mm_struct *mm,
 //static void __adjust_active_threshold(struct mm_struct *mm, struct mem_cgroup *memcg)
 void __adjust_active_threshold(struct mem_cgroup *memcg)
 {
-    unsigned long nr_active = 0;
+    unsigned long nr_active = 0, calc_nr_active = 0;
     unsigned long max_nr_pages = memcg->max_nr_dram_pages -
 	    get_memcg_promotion_watermark(memcg->max_nr_dram_pages);
     bool need_warm = false;
-    int idx_hot, idx_bp;
+    int calc_idx_hot, idx_hot, idx_bp;
     bool check_cooling_period_inc = false;
     bool check_cooling_period_dec = false;
     bool cooling_happened = false;
@@ -1500,13 +1494,21 @@ void __adjust_active_threshold(struct mem_cgroup *memcg)
 	nr_active += nr_pages;
     }
 
-    if ((idx_hot != 15 && htmm_mode != HTMM_ESTIMATION) || (idx_hot < 0))
-      idx_hot++;
+    calc_idx_hot = idx_hot;
+    calc_nr_active = nr_active;
 
-    BUG_ON(idx_hot < 0);
-    
+    if (idx_hot != 15 && htmm_mode != HTMM_ESTIMATION) {
+      //if (idx_hot != 15)
+      idx_hot++;
+    }
+
+    if (idx_hot < 0)
+      idx_hot = 0;
+
+    //BUG_ON(idx_hot < 0);
+
     if (htmm_mode == HTMM_ESTIMATION) {
-	    if (idx_hot <= htmm_thres_hot)
+	    if (idx_hot < htmm_thres_hot)
 		    idx_hot = htmm_thres_hot;
 	    if (htmm_force_warm) {
 		    need_warm = true;
@@ -1527,10 +1529,13 @@ void __adjust_active_threshold(struct mem_cgroup *memcg)
 	    break;
 	nr_active += nr_pages;
     }
-    if ((idx_bp != 15 && htmm_mode != HTMM_ESTIMATION) || (idx_bp < 0))
+    if (idx_bp != 15 && htmm_mode != HTMM_ESTIMATION)
 	idx_bp++;
 
-    BUG_ON(idx_bp < 0);
+    if (idx_bp < 0)
+      idx_bp = 0;
+
+    //BUG_ON(idx_bp < 0);
 
     if (htmm_mode == HTMM_ESTIMATION) {
 	    if (idx_bp <= htmm_thres_hot)
@@ -1552,22 +1557,20 @@ void __adjust_active_threshold(struct mem_cgroup *memcg)
     /* some pages may not be reflected in the histogram when cooling happens */
     if (memcg->cooled) {
       /* when cooling happens, thres will be current - 1 */
-      cooling_happened = true;
-      memcg->cooled = false;
+      //cooling_happened = true;
+      //memcg->cooled = false;
 
-      if (htmm_mode != HTMM_ESTIMATION) {
+      //if (htmm_mode == HTMM_ESTIMATION) {
+      //memcg->active_threshold = idx_hot;
+      //set_lru_adjusting(memcg, true);
+      //}
+      
+      //if (htmm_mode != HTMM_ESTIMATION) {
 	if (idx_hot < memcg->active_threshold) {
 	  if (memcg->active_threshold > memcg->cur_hot_bucket_lower_bound)
 	    memcg->active_threshold--;
-	  /*
-	    if (htmm_mode == HTMM_ESTIMATION) {
-	    if (memcg->active_threshold > 2)
-	    memcg->active_threshold--;
-	    } else {
-	    if (memcg->active_threshold > 1)
-	    memcg->active_threshold--;
-	    }
-	  */
+	} else if (idx_hot > memcg->active_threshold) {
+	  memcg->active_threshold++;
 	}
 	if (idx_bp < memcg->bp_active_threshold)
 	  memcg->bp_active_threshold = idx_bp;
@@ -1586,19 +1589,22 @@ void __adjust_active_threshold(struct mem_cgroup *memcg)
 	  memcg->need_split = false;
 	  //trace_printk("memcg->nr_split: %lu, memcg->split_thres: %lu\n", memcg->nr_split, memcg->split_threshold);
 	}
-      }
+	//}
     }
     else { /* normal case */
       if (htmm_mode == HTMM_ESTIMATION) {
-	if (idx_hot != memcg->active_threshold) {
-	  //printk("thres: %d -> %d\n", memcg->active_threshold, idx_hot);
-	  if (idx_hot >= memcg->cur_hot_bucket_lower_bound)
-	    memcg->active_threshold = idx_hot;
-	  else
-	    memcg->active_threshold = memcg->cur_hot_bucket_lower_bound;
-
+	if (idx_hot > memcg->active_threshold) {
+	  memcg->active_threshold++;
 	  set_lru_adjusting(memcg, true);
+	} else if (idx_hot < memcg->active_threshold) {
+	  if (memcg->active_threshold > memcg->cur_hot_bucket_lower_bound) {
+	    memcg->active_threshold--;
+	    set_lru_adjusting(memcg, true);
+	  }
 	}
+	//else
+	//memcg->active_threshold = memcg->cur_hot_bucket_lower_bound;
+	//}
 	else if (memcg->split_happen && htmm_thres_split &&
 		 idx_hot < memcg->active_threshold) {
 	  /* if split happens, histogram may be changed.
@@ -1609,7 +1615,6 @@ void __adjust_active_threshold(struct mem_cgroup *memcg)
 	}
 	/* estimated base page histogram */
 	memcg->bp_active_threshold = idx_bp;
-
       } else {
 	if (idx_hot > memcg->active_threshold) {
 	  memcg->active_threshold = idx_hot;
@@ -1638,6 +1643,8 @@ void __adjust_active_threshold(struct mem_cgroup *memcg)
 		if (memcg->hot_bucket_last_cooling == htmm_thres_hot) {
 		  memcg->cur_hot_bucket_lower_bound = htmm_thres_hot + 1;
 		  memcg->active_threshold = memcg->cur_hot_bucket_lower_bound;
+		  //printk(KERN_INFO "%s: aggressive cooling led to incrementing thres_hot: hot_bucket_last_cooling = %d, current_hot_bucket = %d, thres_hot_bucket = %d\n",
+		  //	 __func__, memcg->hot_bucket_last_cooling, memcg->active_threshold, htmm_thres_hot);
 		} 
 	      }
 	      memcg->hot_bucket_last_cooling = memcg->active_threshold;
@@ -1646,6 +1653,8 @@ void __adjust_active_threshold(struct mem_cgroup *memcg)
 		memcg->active_threshold == memcg->cur_hot_bucket_lower_bound) {
 	      memcg->upper_warm_threshold = memcg->active_threshold - 1;
 	      memcg->lower_warm_threshold = memcg->active_threshold - 2;
+	      //printk(KERN_INFO "%s: aggressive cooling led to 2 warm buckets: hot_bucket_last_cooling = %d, current_hot_bucket = %d, thres_hot_bucket = %d\n",
+	      // __func__, memcg->hot_bucket_last_cooling, memcg->active_threshold, htmm_thres_hot);
 	    } else {
 	      memcg->upper_warm_threshold = memcg->active_threshold - 1;
 	      memcg->lower_warm_threshold = memcg->active_threshold - 1;
@@ -1686,6 +1695,14 @@ void __adjust_active_threshold(struct mem_cgroup *memcg)
     }
 
     //printk(KERN_INFO "%s: [AFTER] warm threshold = %u, active_threshold = %u, htmm_force_warm = %u, htmm_adaptive_warm = %u, need_warm = %d, memcg->cur_hot_bucket_lower_bound = %u, htmm_thres_hot = %u, idx_hot = %d\n", __func__, memcg->warm_threshold, memcg->active_threshold, htmm_force_warm, htmm_adaptive_warm, need_warm, memcg->cur_hot_bucket_lower_bound, htmm_thres_hot, idx_hot);
+
+    printk(KERN_INFO "%s: nr_samples %lu, max_dram_pages %lu, calc_nr_active %lu, "
+	   "calc_idx_hot %d, prev cooling hot bkt %u, new hot %u, lower warm %u, "
+	   "upper warm %u warm %u, need warm %d, min hot threshold %u\n",
+	   __func__, memcg->nr_sampled, max_nr_pages, calc_nr_active, calc_idx_hot,
+	   memcg->hot_bucket_last_cooling, memcg->active_threshold,
+	   memcg->lower_warm_threshold, memcg->upper_warm_threshold,
+	   memcg->warm_threshold, need_warm, memcg->cur_hot_bucket_lower_bound);
     bpf_register_adaptation(memcg->warm_threshold, memcg->active_threshold, phase_num);
 }
 
@@ -1834,6 +1851,7 @@ void update_pginfo(pid_t pid, unsigned long address, enum events e)
 
     /* threshold adaptation */
     else if (memcg->nr_sampled % htmm_adaptation_period == 0) {
+    //if (memcg->nr_sampled % htmm_adaptation_period == 0) {
 	    __adjust_active_threshold(memcg);
     }
 

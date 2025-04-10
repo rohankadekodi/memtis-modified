@@ -395,20 +395,24 @@ static bool htmm_estimation_check_if_cold(unsigned long recent_accesses,
   if (idx >= memcg->active_threshold)
     return false;
 
-  if (idx < memcg->warm_threshold)
+  if (idx < memcg->lower_warm_threshold)
     return true;
 
-  // idx == memcg->warm_threshold
-  if (idx < 4)
+  if (memcg->lower_warm_threshold != memcg->upper_warm_threshold)
     return false;
 
+  // idx >= memcg->lower_warm_threshold && idx <= upper_warm_threshold
+  if (idx < 4)
+    return false;
+  
   unsigned long estimation = compute_estimate_access(memcg->nr_sampled,
 						     memcg->last_cooling_sample,
 						     recent_accesses,
 						     bottom_accesses,
 						     htmm_cooling_period);
   unsigned long bucket_accesses = get_accesses_from_idx(idx);
-  unsigned long bucket_middle_accesses = bucket_accesses + (bucket_accesses * 3 / 4);
+
+  unsigned long bucket_middle_accesses = bucket_accesses + (bucket_accesses * (100 - htmm_fraction_warm) / 100);
   if (estimation >= bucket_middle_accesses)
     return false;
 
