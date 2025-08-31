@@ -408,7 +408,8 @@ static bool htmm_estimation_check_if_cold(unsigned long recent_accesses,
 						     bottom_accesses,
 						     htmm_cooling_period);
   unsigned long bucket_accesses = get_accesses_from_idx(idx);
-  unsigned long bucket_middle_accesses = bucket_accesses + (bucket_accesses * 3 / 4);
+  //unsigned long bucket_middle_accesses = bucket_accesses + (bucket_accesses * 3 / 4);
+  unsigned long bucket_middle_accesses = bucket_accesses;
   if (estimation >= bucket_middle_accesses)
     return false;
 

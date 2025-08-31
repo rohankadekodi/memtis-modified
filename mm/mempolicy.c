@@ -3056,6 +3056,7 @@ unsigned long htmm_sample_period = 199;
 unsigned long htmm_inst_sample_period = 100007;
 unsigned int htmm_thres_hot = 1;
 unsigned int htmm_bp_inc = 512;
+unsigned long htmm_bp_cooling_factor = 1;
 unsigned int htmm_adaptive_warm = 0;
 unsigned int htmm_force_warm = 0;
 unsigned long htmm_cooling_period = 2000000;
@@ -3486,10 +3487,35 @@ static struct kobj_attribute htmm_adaptive_warm_attr =
 	       htmm_adaptive_warm_store);
 
 
+static ssize_t htmm_bp_cooling_factor_show(struct kobject *kobj,
+				   struct kobj_attribute *attr, char *buf)
+{
+	return sysfs_emit(buf, "%lu\n", htmm_bp_cooling_factor);
+}
+
+static ssize_t htmm_bp_cooling_factor_store(struct kobject *kobj,
+				    struct kobj_attribute *attr,
+				    const char *buf, size_t count)
+{
+	int err;
+	unsigned int period;
+
+	err = kstrtouint(buf, 10, &period);
+	if (err)
+		return err;
+
+	WRITE_ONCE(htmm_bp_cooling_factor, period);
+	return count;
+}
+
+static struct kobj_attribute htmm_bp_cooling_factor_attr =
+	__ATTR(htmm_bp_cooling_factor, 0644, htmm_bp_cooling_factor_show,
+	       htmm_bp_cooling_factor_store);
+
 static ssize_t htmm_bp_inc_show(struct kobject *kobj,
 				   struct kobj_attribute *attr, char *buf)
 {
-	return sysfs_emit(buf, "%lu\n", htmm_bp_inc);
+	return sysfs_emit(buf, "%u\n", htmm_bp_inc);
 }
 
 static ssize_t htmm_bp_inc_store(struct kobject *kobj,
@@ -3740,6 +3766,7 @@ static struct attribute *htmm_attrs[] = {
 	&htmm_nowarm_attr.attr,
 	&htmm_force_warm_attr.attr,
 	&htmm_adaptive_warm_attr.attr,
+	&htmm_bp_cooling_factor_attr.attr,
 	&htmm_bp_inc_attr.attr,
 	&htmm_util_weight_attr.attr,
 	&htmm_mode_attr.attr,

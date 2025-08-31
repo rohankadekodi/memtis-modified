@@ -2156,7 +2156,7 @@ static void __split_huge_pmd_locked(struct vm_area_struct *vma, pmd_t *pmd,
 		pte_pginfo->bottom_accesses = tail_pginfo->bottom_accesses;
 		pte_pginfo->cooling_clock = tail_pginfo->cooling_clock;
 		
-		cur_idx = compute_idx(memcg->nr_sampled, memcg->last_cooling_sample, pte_pginfo->recent_accesses, pte_pginfo->bottom_accesses, pte_pginfo->bottom_accesses, htmm_cooling_period, htmm_mode);
+		cur_idx = compute_idx(memcg->nr_sampled, memcg->last_cooling_sample, pte_pginfo->recent_accesses, pte_pginfo->bottom_accesses, pte_pginfo->bottom_accesses, htmm_cooling_period, htmm_mode, htmm_bp_cooling_factor, 0);
 		inspect_page_migration_lock(pte_pginfo, htmm_mode);
 		if (cur_idx >= (memcg->active_threshold - 1))
 		    SetPageActive(&page[i]);

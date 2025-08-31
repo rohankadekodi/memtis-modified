@@ -3,8 +3,9 @@
 #define DEFERRED_SPLIT_ISOLATED 1
 
 #define BUFFER_SIZE	32 /* 128: 1MB */
-#define CPUS_PER_SOCKET 20
+#define CPUS_PER_SOCKET 32
 #define MAX_MIGRATION_RATE_IN_MBPS  2048 /* 2048MB per sec */
+#define CPU_INC_AMOUNT 2
 
 
 /* pebs events */
@@ -213,12 +214,21 @@ static inline unsigned int compute_idx_lstm(unsigned long stm, unsigned long ltm
 	return bucket_idx; 
 }
 
-static inline unsigned int compute_idx_estimation(unsigned long nr_samples, unsigned long last_cooling_sample, unsigned long recent_accesses, unsigned long bottom_accesses, unsigned long htmm_cooling_period)
+static inline unsigned long compute_estimation_cooling_factor(int is_hugepage, unsigned long cooling_period, unsigned long bp_cooling_factor)
+{
+	if (is_hugepage) {
+		return cooling_period;
+	}
+	return (cooling_period * bp_cooling_factor);
+}
+
+static inline unsigned int compute_idx_estimation(unsigned long nr_samples, unsigned long last_cooling_sample, unsigned long recent_accesses, unsigned long bottom_accesses, unsigned long htmm_cooling_period, unsigned long bp_cooling_factor, int is_hugepage)
 {
 	long long alpha, estimation, estimation_1;
 	unsigned int bucket_idx;
+	unsigned long cooling_factor = compute_estimation_cooling_factor(is_hugepage, htmm_cooling_period, bp_cooling_factor);
 	alpha = nr_samples - last_cooling_sample; 
-	estimation_1 = (long long)recent_accesses - (long long)(alpha * (long long)(bottom_accesses) / htmm_cooling_period);
+	estimation_1 = (long long)recent_accesses - (long long)(alpha * (long long)(bottom_accesses) / cooling_factor);
 	if (estimation_1 < 0)
 		estimation_1 = 0;
 	else
@@ -242,10 +252,10 @@ static inline unsigned int compute_idx_memtis(unsigned long stm)
 
 static inline unsigned int compute_idx(unsigned long nr_samples, unsigned long last_cooling_sample,
 		unsigned long recent_accesses, unsigned long bottom_accesses, unsigned long ltm,
-		unsigned long htmm_cooling_period, int htmm_mode)
+		unsigned long htmm_cooling_period, int htmm_mode, unsigned long bp_cooling_factor, int is_hugepage)
 {
 	if (htmm_mode == HTMM_ESTIMATION)
-		return compute_idx_estimation(nr_samples, last_cooling_sample, recent_accesses, bottom_accesses, htmm_cooling_period);
+		return compute_idx_estimation(nr_samples, last_cooling_sample, recent_accesses, bottom_accesses, htmm_cooling_period, bp_cooling_factor, is_hugepage);
 	if (htmm_mode == HTMM_LSTM || htmm_mode == HTMM_LSTM_DLOCK || htmm_mode == HTMM_LSTM_PDLOCK)
 		return compute_idx_lstm(recent_accesses, ltm);
 	return compute_idx_memtis(recent_accesses); 
@@ -325,6 +335,6 @@ extern int kmigraterd_init(void);
 extern void kmigraterd_stop(void);
 extern void bpf_demotion_loop_hook(unsigned long demotion_ctr, unsigned long nr_reclaimed); 
 extern void bpf_promotion_loop_hook(unsigned long promotion_ctr, unsigned long nr_promoted); 
-extern void bpf_log_estimate_values_access(unsigned long page_pointer, long long estimation, unsigned long htmm_cooling_period, unsigned long last_cooling_sample, unsigned long total_accesses);
+extern void bpf_log_estimate_values_access(unsigned long page_pointer, long long estimation, unsigned long htmm_cooling_period, unsigned long stm_accesses, struct mem_cgroup *memcg);
 extern void __adjust_active_threshold(struct mem_cgroup *memcg);
 

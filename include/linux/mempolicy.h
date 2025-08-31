@@ -194,6 +194,7 @@ extern unsigned int htmm_thres_hot;
 extern unsigned long htmm_cooling_period;
 extern unsigned long htmm_adaptation_period;
 extern unsigned int htmm_bp_inc;
+extern unsigned long htmm_bp_cooling_factor;
 extern unsigned int htmm_adaptive_warm;
 extern unsigned int htmm_force_warm;
 extern unsigned int ksampled_min_sample_ratio;

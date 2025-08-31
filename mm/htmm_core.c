@@ -224,7 +224,7 @@ void check_transhuge_cooling(void *arg, struct page *page, bool locked)
 		offset = i % 2;
 		pginfo =&(page[idx].compound_pginfo[offset]);
 
-		prev_idx = compute_idx(memcg->nr_sampled, memcg->last_cooling_sample, pginfo->recent_accesses, pginfo->bottom_accesses, pginfo->bottom_accesses, htmm_cooling_period, htmm_mode);
+		prev_idx = compute_idx(memcg->nr_sampled, memcg->last_cooling_sample, pginfo->recent_accesses, pginfo->bottom_accesses, pginfo->bottom_accesses, htmm_cooling_period, htmm_mode, htmm_bp_cooling_factor, 0);
 		//prev_idx = get_idx(pginfo->total_accesses);
 		if (prev_idx >= bp_hot_thres) {
 		    meta_page->hot_utils++;
@@ -254,7 +254,7 @@ void check_transhuge_cooling(void *arg, struct page *page, bool locked)
 
 		/* updates estimated base page histogram */
 		inspect_page_migration_lock(pginfo, htmm_mode);
-		cur_idx = compute_idx(memcg->nr_sampled, memcg->last_cooling_sample, pginfo->recent_accesses, pginfo->bottom_accesses, pginfo->bottom_accesses, htmm_cooling_period, htmm_mode);
+		cur_idx = compute_idx(memcg->nr_sampled, memcg->last_cooling_sample, pginfo->recent_accesses, pginfo->bottom_accesses, pginfo->bottom_accesses, htmm_cooling_period, htmm_mode, htmm_bp_cooling_factor, 0);
 		memcg->ebp_hotness_hg[cur_idx]++;
 	    }
 
@@ -271,7 +271,7 @@ void check_transhuge_cooling(void *arg, struct page *page, bool locked)
 	    }
 
 	    inspect_hugepage_migration_lock(meta_page, htmm_mode);
-	    cur_idx = compute_idx(memcg->nr_sampled, memcg->last_cooling_sample, meta_page->recent_accesses, meta_page->bottom_accesses, meta_page->bottom_accesses, htmm_cooling_period, htmm_mode);
+	    cur_idx = compute_idx(memcg->nr_sampled, memcg->last_cooling_sample, meta_page->recent_accesses, meta_page->bottom_accesses, meta_page->bottom_accesses, htmm_cooling_period, htmm_mode, htmm_bp_cooling_factor, 1);
 	    memcg->hotness_hg[cur_idx] += HPAGE_PMD_NR;
 	    meta_page->idx = cur_idx;
 
@@ -317,7 +317,7 @@ void check_base_cooling(pginfo_t *pginfo, struct page *page, bool locked)
 	unsigned int diff = memcg_cclock - pginfo->cooling_clock;    
 	int j;
 	    
-	cur_idx = compute_idx(memcg->nr_sampled - 1, memcg->last_cooling_sample, pginfo->recent_accesses, pginfo->bottom_accesses, pginfo->bottom_accesses, htmm_cooling_period, htmm_mode);
+	cur_idx = compute_idx(memcg->nr_sampled - 1, memcg->last_cooling_sample, pginfo->recent_accesses, pginfo->bottom_accesses, pginfo->bottom_accesses, htmm_cooling_period, htmm_mode, htmm_bp_cooling_factor, 0);
 	if (cur_idx >= (memcg->bp_active_threshold))
 	    pginfo->may_hot = true;
 	else
@@ -338,7 +338,7 @@ void check_base_cooling(pginfo_t *pginfo, struct page *page, bool locked)
 	  //  pginfo->total_accesses = 1;
 
 	inspect_page_migration_lock(pginfo, htmm_mode);
-	cur_idx = compute_idx(memcg->nr_sampled - 1, memcg->last_cooling_sample, pginfo->recent_accesses, pginfo->bottom_accesses, pginfo->bottom_accesses, htmm_cooling_period, htmm_mode);
+	cur_idx = compute_idx(memcg->nr_sampled - 1, memcg->last_cooling_sample, pginfo->recent_accesses, pginfo->bottom_accesses, pginfo->bottom_accesses, htmm_cooling_period, htmm_mode, htmm_bp_cooling_factor, 0);
 
 	memcg->hotness_hg[cur_idx]++;
 	memcg->ebp_hotness_hg[cur_idx]++;
@@ -717,7 +717,7 @@ void uncharge_htmm_pte(pte_t *pte, struct mem_cgroup *memcg)
     if (!pginfo)
 	return;
 
-    idx = compute_idx(memcg->nr_sampled, memcg->last_cooling_sample, pginfo->recent_accesses, pginfo->bottom_accesses, pginfo->bottom_accesses, htmm_cooling_period, htmm_mode);
+    idx = compute_idx(memcg->nr_sampled, memcg->last_cooling_sample, pginfo->recent_accesses, pginfo->bottom_accesses, pginfo->bottom_accesses, htmm_cooling_period, htmm_mode, htmm_bp_cooling_factor, 0);
     spin_lock(&memcg->access_lock);
     if (memcg->hotness_hg[idx] > 0)
 	memcg->hotness_hg[idx]--;
@@ -754,7 +754,7 @@ void uncharge_htmm_page(struct page *page, struct mem_cgroup *memcg)
 	    pginfo_t *pginfo;
 
 	    pginfo = &(page[base_idx].compound_pginfo[offset]);
-	    idx = compute_idx(memcg->nr_sampled, memcg->last_cooling_sample, pginfo->recent_accesses, pginfo->bottom_accesses, pginfo->bottom_accesses, htmm_cooling_period, htmm_mode);
+	    idx = compute_idx(memcg->nr_sampled, memcg->last_cooling_sample, pginfo->recent_accesses, pginfo->bottom_accesses, pginfo->bottom_accesses, htmm_cooling_period, htmm_mode, htmm_bp_cooling_factor, 0);
 	    if (memcg->ebp_hotness_hg[idx] > 0)
 		memcg->ebp_hotness_hg[idx]--;
 	}
@@ -979,23 +979,24 @@ lru_unlock:
 	BUG();
 }
 
-noinline void bpf_log_estimate_values_access(unsigned long page_pointer, long long estimation, unsigned long htmm_cooling_period, unsigned long last_cooling_sample, unsigned long total_accesses)
+noinline void bpf_log_estimate_values_access(unsigned long page_pointer, long long estimation, unsigned long htmm_cooling_period, unsigned long stm_accesses, struct mem_cgroup *memcg)
 {
 	BUG_ON(page_pointer == 0);	
 }
 
-static void compute_estimate_access(unsigned long page_pointer, unsigned long nr_samples, unsigned long last_cooling_sample, unsigned long recent_accesses, unsigned long bottom_accesses, unsigned long htmm_cooling_period)
+static void compute_estimate_access(unsigned long page_pointer, struct mem_cgroup *memcg, unsigned long recent_accesses, unsigned long bottom_accesses, unsigned long htmm_cooling_period, int is_hugepage)
 {
 	long long alpha, estimation, estimation_1;
-	alpha = nr_samples - last_cooling_sample; 
-	estimation_1 = (long long)recent_accesses - (long long)(alpha * (long long)(bottom_accesses) / htmm_cooling_period);
+	unsigned long cooling_factor = compute_estimation_cooling_factor(is_hugepage, htmm_cooling_period, htmm_bp_cooling_factor);
+	alpha = memcg->nr_sampled - memcg->last_cooling_sample; 
+	estimation_1 = (long long)recent_accesses - (long long)(alpha * (long long)(bottom_accesses) / cooling_factor);
 	if (estimation_1 < 0)
 		estimation_1 = 0;
 	else
 		estimation_1 = estimation_1 / 2;
 
 	estimation = bottom_accesses + estimation_1;
-	bpf_log_estimate_values_access(page_pointer, estimation, htmm_cooling_period, last_cooling_sample, nr_samples);
+	bpf_log_estimate_values_access(page_pointer, estimation, htmm_cooling_period, recent_accesses, memcg);
 }
 
 static void update_base_page(struct vm_area_struct *vma,
@@ -1004,7 +1005,7 @@ static void update_base_page(struct vm_area_struct *vma,
     struct mem_cgroup *memcg = get_mem_cgroup_from_mm(vma->vm_mm);
     unsigned long prev_accessed, prev_idx, cur_idx, accesses, virtual_address;
     bool hot;
-    int dram = 0;
+    int dram = 0, node_id = 0;
     bool page_unlocked = true;
 
     /* check cooling status and perform cooling if the page needs to be cooled */
@@ -1013,7 +1014,7 @@ static void update_base_page(struct vm_area_struct *vma,
     prev_accessed = pginfo->recent_accesses;
     pginfo->nr_accesses = 1;
     //pginfo->total_accesses += HPAGE_PMD_NR;
-    prev_idx = compute_idx(memcg->nr_sampled - 1, memcg->last_cooling_sample, pginfo->recent_accesses, pginfo->bottom_accesses, pginfo->bottom_accesses, htmm_cooling_period, htmm_mode);
+    prev_idx = compute_idx(memcg->nr_sampled - 1, memcg->last_cooling_sample, pginfo->recent_accesses, pginfo->bottom_accesses, pginfo->bottom_accesses, htmm_cooling_period, htmm_mode, htmm_bp_cooling_factor, 0);
     pginfo->recent_accesses += htmm_bp_inc;
     /*
     if (htmm_mode == HTMM_ESTIMATION) {
@@ -1023,7 +1024,7 @@ static void update_base_page(struct vm_area_struct *vma,
     }
     */
     page_unlocked = inspect_page_migration_lock(pginfo, htmm_mode);
-    cur_idx = compute_idx(memcg->nr_sampled, memcg->last_cooling_sample, pginfo->recent_accesses, pginfo->bottom_accesses, pginfo->bottom_accesses, htmm_cooling_period, htmm_mode);
+    cur_idx = compute_idx(memcg->nr_sampled, memcg->last_cooling_sample, pginfo->recent_accesses, pginfo->bottom_accesses, pginfo->bottom_accesses, htmm_cooling_period, htmm_mode, htmm_bp_cooling_factor, 0);
     
     if (htmm_cxl_mode) {
 	    if (page_to_nid(page) == 0)
@@ -1059,11 +1060,17 @@ static void update_base_page(struct vm_area_struct *vma,
 
     spin_unlock(&memcg->access_lock);
 
+    if (htmm_cxl_mode) {
+	node_id = page_pgdat(page)->node_id;
+	BUG_ON(node_id < 0 || node_id > 1);
+	dram = node_id + 1;
+    }
+
     hot = cur_idx >= memcg->active_threshold;
     virtual_address = get_page_virtual_address(page); 
     if (virtual_address != 1) {
       bpf_register_memory_access_ltm((unsigned long) virtual_address, pginfo->bottom_accesses, pginfo->recent_accesses, dram, memcg);
-      compute_estimate_access((unsigned long)virtual_address, memcg->nr_sampled, memcg->last_cooling_sample, pginfo->recent_accesses, pginfo->bottom_accesses, htmm_cooling_period);
+      compute_estimate_access((unsigned long)virtual_address, memcg, pginfo->recent_accesses, pginfo->bottom_accesses, htmm_cooling_period, 0);
     }
     
     if (page_unlocked) {
@@ -1088,7 +1095,7 @@ static void update_huge_page(struct vm_area_struct *vma, pmd_t *pmd,
     unsigned long prev_idx, cur_idx, accesses, virtual_address;
     bool hot, pg_split = false;
     unsigned long pginfo_prev;
-    int dram = 0;
+    int dram = 0, node_id = 0;
     bool page_unlocked = true;
 
     meta_page = get_meta_page(page);
@@ -1101,7 +1108,7 @@ static void update_huge_page(struct vm_area_struct *vma, pmd_t *pmd,
     pginfo->nr_accesses = 1;
     //pginfo->total_accesses += HPAGE_PMD_NR;
 
-    prev_idx = compute_idx(memcg->nr_sampled - 1, memcg->last_cooling_sample, pginfo->recent_accesses, pginfo->bottom_accesses, pginfo->bottom_accesses, htmm_cooling_period, htmm_mode);
+    prev_idx = compute_idx(memcg->nr_sampled - 1, memcg->last_cooling_sample, pginfo->recent_accesses, pginfo->bottom_accesses, pginfo->bottom_accesses, htmm_cooling_period, htmm_mode, htmm_bp_cooling_factor, 0);
     pginfo->recent_accesses += htmm_bp_inc;
     /*
     if (htmm_mode == HTMM_ESTIMATION) {
@@ -1111,7 +1118,7 @@ static void update_huge_page(struct vm_area_struct *vma, pmd_t *pmd,
     }
     */
     inspect_page_migration_lock(pginfo, htmm_mode);
-    cur_idx = compute_idx(memcg->nr_sampled, memcg->last_cooling_sample, pginfo->recent_accesses, pginfo->bottom_accesses, pginfo->bottom_accesses, htmm_cooling_period, htmm_mode);
+    cur_idx = compute_idx(memcg->nr_sampled, memcg->last_cooling_sample, pginfo->recent_accesses, pginfo->bottom_accesses, pginfo->bottom_accesses, htmm_cooling_period, htmm_mode, htmm_bp_cooling_factor, 0);
 
     //meta_page->total_accesses++;
     
@@ -1138,9 +1145,9 @@ static void update_huge_page(struct vm_area_struct *vma, pmd_t *pmd,
     spin_unlock(&memcg->access_lock);
 
     /* hugepage */
-    prev_idx = compute_idx(memcg->nr_sampled - 1, memcg->last_cooling_sample, meta_page->recent_accesses, meta_page->bottom_accesses, meta_page->bottom_accesses, htmm_cooling_period, htmm_mode);
+    prev_idx = compute_idx(memcg->nr_sampled - 1, memcg->last_cooling_sample, meta_page->recent_accesses, meta_page->bottom_accesses, meta_page->bottom_accesses, htmm_cooling_period, htmm_mode, htmm_bp_cooling_factor, 1);
     meta_page->recent_accesses++;
-    cur_idx = compute_idx(memcg->nr_sampled, memcg->last_cooling_sample, meta_page->recent_accesses, meta_page->bottom_accesses, meta_page->bottom_accesses, htmm_cooling_period, htmm_mode);
+    cur_idx = compute_idx(memcg->nr_sampled, memcg->last_cooling_sample, meta_page->recent_accesses, meta_page->bottom_accesses, meta_page->bottom_accesses, htmm_cooling_period, htmm_mode, htmm_bp_cooling_factor, 1);
     page_unlocked = inspect_hugepage_migration_lock(meta_page, htmm_mode);
 
     if (htmm_cxl_mode) {
@@ -1170,11 +1177,17 @@ static void update_huge_page(struct vm_area_struct *vma, pmd_t *pmd,
     if (pg_split)
 	return;
 
+    if (htmm_cxl_mode) {
+	node_id = page_pgdat(page)->node_id;
+	BUG_ON(node_id < 0 || node_id > 1);
+	dram = node_id + 1;
+    }
+
     hot = cur_idx >= memcg->active_threshold;
     virtual_address = get_page_virtual_address(page); 
     if (virtual_address != 1) {
-      bpf_register_memory_access_ltm((unsigned long) address, meta_page->bottom_accesses, meta_page->recent_accesses, dram, memcg);
-      compute_estimate_access((unsigned long)address, memcg->nr_sampled, memcg->last_cooling_sample, meta_page->recent_accesses, meta_page->bottom_accesses, htmm_cooling_period);
+      bpf_register_memory_access_ltm((unsigned long) virtual_address, meta_page->bottom_accesses, meta_page->recent_accesses, dram, memcg);
+      compute_estimate_access((unsigned long)virtual_address, memcg, meta_page->recent_accesses, meta_page->bottom_accesses, htmm_cooling_period, 1);
     }
 
 
