@@ -3059,6 +3059,7 @@ unsigned int htmm_bp_inc = 512;
 unsigned long htmm_bp_cooling_factor = 1;
 unsigned int htmm_adaptive_warm = 0;
 unsigned int htmm_force_warm = 0;
+unsigned int htmm_oversubscribe_hot = 0;
 unsigned long htmm_cooling_period = 2000000;
 unsigned long htmm_adaptation_period = 100000;
 unsigned int htmm_split_period = 2; /* used to shift the wss of memcg */
@@ -3461,6 +3462,31 @@ static struct kobj_attribute htmm_force_warm_attr =
 	__ATTR(htmm_force_warm, 0644, htmm_force_warm_show,
 	       htmm_force_warm_store);
 
+static ssize_t htmm_oversubscribe_hot_show(struct kobject *kobj,
+				   struct kobj_attribute *attr, char *buf)
+{
+	return sysfs_emit(buf, "%u\n", htmm_oversubscribe_hot);
+}
+
+static ssize_t htmm_oversubscribe_hot_store(struct kobject *kobj,
+				    struct kobj_attribute *attr,
+				    const char *buf, size_t count)
+{
+	int err;
+	unsigned int period;
+
+	err = kstrtouint(buf, 10, &period);
+	if (err)
+		return err;
+
+	WRITE_ONCE(htmm_oversubscribe_hot, period);
+	return count;
+}
+
+static struct kobj_attribute htmm_oversubscribe_hot_attr =
+	__ATTR(htmm_oversubscribe_hot, 0644, htmm_oversubscribe_hot_show,
+	       htmm_oversubscribe_hot_store);
+
 static ssize_t htmm_adaptive_warm_show(struct kobject *kobj,
 				   struct kobj_attribute *attr, char *buf)
 {
@@ -3765,6 +3791,7 @@ static struct attribute *htmm_attrs[] = {
 	&htmm_thres_split_attr.attr,
 	&htmm_nowarm_attr.attr,
 	&htmm_force_warm_attr.attr,
+	&htmm_oversubscribe_hot_attr.attr,
 	&htmm_adaptive_warm_attr.attr,
 	&htmm_bp_cooling_factor_attr.attr,
 	&htmm_bp_inc_attr.attr,

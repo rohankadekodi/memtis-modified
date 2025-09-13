@@ -3,9 +3,9 @@
 #define DEFERRED_SPLIT_ISOLATED 1
 
 #define BUFFER_SIZE	32 /* 128: 1MB */
-#define CPUS_PER_SOCKET 32
+#define CPUS_PER_SOCKET 20
 #define MAX_MIGRATION_RATE_IN_MBPS  2048 /* 2048MB per sec */
-#define CPU_INC_AMOUNT 2
+#define CPU_INC_AMOUNT 1
 
 
 /* pebs events */

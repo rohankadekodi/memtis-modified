@@ -7687,22 +7687,27 @@ static int memcg_hotness_stat_show(struct seq_file *m, void *v)
     struct mem_cgroup *memcg = mem_cgroup_from_css(seq_css(m));
     struct seq_buf s;
     unsigned long hot = 0, warm = 0, cold = 0;
+    unsigned int hot_threshold = 0, lower_warm_threshold = 0, upper_warm_threshold = 0;
     int i;
 
     seq_buf_init(&s, kmalloc(PAGE_SIZE, GFP_KERNEL), PAGE_SIZE);
     if (!s.buffer)
 	return 0;
 
+    hot_threshold = memcg->active_threshold;
+    lower_warm_threshold = memcg->lower_warm_threshold;
+    upper_warm_threshold = memcg->upper_warm_threshold;
+
     for (i = 15; i >= 0; i--) {
-	if (i >= memcg->active_threshold)
+	if (i >= hot_threshold)
 	    hot += memcg->hotness_hg[i];
-	else if (i >= memcg->warm_threshold)
+	else if (i >= lower_warm_threshold)
 	    warm += memcg->hotness_hg[i];
 	else
 	    cold += memcg->hotness_hg[i];
     }
 
-    seq_buf_printf(&s, "hot %lu warm %lu cold %lu\n", hot, warm, cold);
+    seq_buf_printf(&s, "hot %lu [%u] warm %lu [%u,%u] cold %lu\n", hot, hot_threshold, warm, lower_warm_threshold, upper_warm_threshold, cold);
 
     seq_puts(m, s.buffer);
     kfree(s.buffer);
