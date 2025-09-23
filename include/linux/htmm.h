@@ -107,8 +107,8 @@ extern void copy_transhuge_pginfo(struct page *page,
 				  struct page *newpage);
 extern pginfo_t *get_compound_pginfo(struct page *page, unsigned long address);
 
-extern void check_transhuge_cooling(void *arg, struct page *page, bool locked);
-extern void check_base_cooling(pginfo_t *pginfo, struct page *page, bool locked);
+extern void check_transhuge_cooling(void *arg, struct page *page, bool locked, int dram);
+extern void check_base_cooling(pginfo_t *pginfo, struct page *page, bool locked, int dram);
 extern int set_page_coolstatus(struct page *page, pte_t *pte, struct mm_struct *mm, unsigned long fault_address);
 
 extern void set_lru_adjusting(struct mem_cgroup *memcg, bool inc_thres);

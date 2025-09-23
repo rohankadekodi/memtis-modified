@@ -5266,6 +5266,8 @@ static struct mem_cgroup *mem_cgroup_alloc(void)
 	for (i = 0; i < 16; i++) {
 	    memcg->hotness_hg[i] = 0;
 	    memcg->ebp_hotness_hg[i] = 0;
+	    memcg->dram_hotness_hg[i] = 0;
+	    memcg->nvm_hotness_hg[i] = 0;
 	}
 
 	spin_lock_init(&memcg->access_lock);
@@ -7653,8 +7655,8 @@ static int memcg_access_map_show(struct seq_file *m, void *v)
     }
 
     for (i = 15; i >= 0; i--) {
-	seq_buf_printf(&s, "skewness_idx_map[%2d]: %10lu  hotness_hg[%2d]: %10lu  ebp_hotness_hg[%2d]: %10lu\n",
-		i, memcg->access_map[i], i, memcg->hotness_hg[i], i, memcg->ebp_hotness_hg[i]);
+	seq_buf_printf(&s, "skewness_idx_map[%2d]: %10lu  hotness_hg[%2d]: %10lu  ebp_hotness_hg[%2d]: %10lu  dram_hotness_hg[%2d]: %10lu  nvm_hotness_hg[%2d]: %10lu\n",
+		i, memcg->access_map[i], i, memcg->hotness_hg[i], i, memcg->ebp_hotness_hg[i], i, memcg->dram_hotness_hg[i], i, memcg->nvm_hotness_hg[i]);
 
 
     }

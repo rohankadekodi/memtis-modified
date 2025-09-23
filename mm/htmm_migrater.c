@@ -756,6 +756,8 @@ static unsigned long demote_node(pg_data_t *pgdat, struct mem_cgroup *memcg,
 		get_memcg_demotion_watermark(max) < max)
 	    WRITE_ONCE(memcg->nodeinfo[pgdat->node_id]->need_demotion, false);
     } while (0);
+
+    //printk(KERN_INFO "%s: nr_to_reclaim: %lu, nr_reclaimed = %lu\n", __func__, nr_to_reclaim, nr_reclaimed);
     return nr_reclaimed;
 }
 
@@ -766,12 +768,19 @@ static unsigned long promote_node(pg_data_t *pgdat, struct mem_cgroup *memcg)
     enum lru_list lru = LRU_ACTIVE_ANON;
     short priority = DEF_PRIORITY;
     int target_nid = htmm_cxl_mode ? 0 : next_promotion_node(pgdat->node_id);
+    bool fasttier_full = false;
 
-    if (!promotion_available(target_nid, memcg, &nr_to_promote))
-	return 0;
+    if (!promotion_available(target_nid, memcg, &nr_to_promote)) {
+	    fasttier_full = true;
+    }
 
     nr_to_promote = min(nr_to_promote,
 		    lruvec_lru_size(lruvec, lru, MAX_NR_ZONES));
+
+    //printk(KERN_INFO "%s: promotion queue size: %lu, nr_to_promote: %lu\n", __func__, lruvec_lru_size(lruvec, lru, MAX_NR_ZONES), nr_to_promote);
+
+    if (fasttier_full)
+	    return 0;
     
     if (nr_to_promote == 0 && (htmm_mode == HTMM_NO_MIG || htmm_mode == HTMM_NO_DEMOTION)) {
 	lru = LRU_INACTIVE_ANON;
@@ -798,6 +807,7 @@ static unsigned long cooling_active_list(unsigned long nr_to_scan,
     LIST_HEAD(l_active);
     LIST_HEAD(l_inactive);
     int file = is_file_lru(lru);
+    int dram = 0, node_id = 0;
 
     lru_add_drain();
 
@@ -830,13 +840,17 @@ static unsigned long cooling_active_list(unsigned long nr_to_scan,
 		    spin_lock_irq(&lruvec->lru_lock);
 		    if (deferred_split_huge_page_for_htmm(compound_head(page))) {
 			spin_unlock_irq(&lruvec->lru_lock);
-			check_transhuge_cooling((void *)memcg, page, false);
+			check_transhuge_cooling((void *)memcg, page, false, 0);
 			continue;
 		    }
 		    spin_unlock_irq(&lruvec->lru_lock);
 		}
 #endif
-		check_transhuge_cooling((void *)memcg, page, false);
+		node_id = page_pgdat(page)->node_id;
+		dram = node_id + 1;
+		if (node_id >= 1)
+			dram = 2; 
+		check_transhuge_cooling((void *)memcg, page, false, dram);
 
 		if (meta->idx >= memcg->active_threshold) {
 		    still_hot = 2;

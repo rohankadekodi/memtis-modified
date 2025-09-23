@@ -3058,6 +3058,8 @@ unsigned int htmm_thres_hot = 1;
 unsigned int htmm_bp_inc = 512;
 unsigned long htmm_bp_cooling_factor = 1;
 unsigned int htmm_adaptive_warm = 0;
+unsigned int htmm_adaptive_active_lower_bound = 0;
+unsigned int htmm_trend_adaptive_thres_count = 8;
 unsigned int htmm_force_warm = 0;
 unsigned int htmm_oversubscribe_hot = 0;
 unsigned long htmm_cooling_period = 2000000;
@@ -3512,6 +3514,56 @@ static struct kobj_attribute htmm_adaptive_warm_attr =
 	__ATTR(htmm_adaptive_warm, 0644, htmm_adaptive_warm_show,
 	       htmm_adaptive_warm_store);
 
+static ssize_t htmm_adaptive_active_lower_bound_show(struct kobject *kobj,
+				   struct kobj_attribute *attr, char *buf)
+{
+	return sysfs_emit(buf, "%u\n", htmm_adaptive_active_lower_bound);
+}
+
+static ssize_t htmm_adaptive_active_lower_bound_store(struct kobject *kobj,
+				    struct kobj_attribute *attr,
+				    const char *buf, size_t count)
+{
+	int err;
+	unsigned int period;
+
+	err = kstrtouint(buf, 10, &period);
+	if (err)
+		return err;
+
+	WRITE_ONCE(htmm_adaptive_active_lower_bound, period);
+	return count;
+}
+
+static struct kobj_attribute htmm_adaptive_active_lower_bound_attr =
+	__ATTR(htmm_adaptive_active_lower_bound, 0644, htmm_adaptive_active_lower_bound_show,
+	       htmm_adaptive_active_lower_bound_store);
+
+static ssize_t htmm_trend_adaptive_thres_count_show(struct kobject *kobj,
+				   struct kobj_attribute *attr, char *buf)
+{
+	return sysfs_emit(buf, "%u\n", htmm_trend_adaptive_thres_count);
+}
+
+static ssize_t htmm_trend_adaptive_thres_count_store(struct kobject *kobj,
+				    struct kobj_attribute *attr,
+				    const char *buf, size_t count)
+{
+	int err;
+	unsigned int period;
+
+	err = kstrtouint(buf, 10, &period);
+	if (err)
+		return err;
+
+	WRITE_ONCE(htmm_trend_adaptive_thres_count, period);
+	return count;
+}
+
+static struct kobj_attribute htmm_trend_adaptive_thres_count_attr =
+	__ATTR(htmm_trend_adaptive_thres_count, 0644, htmm_trend_adaptive_thres_count_show,
+	       htmm_trend_adaptive_thres_count_store);
+
 
 static ssize_t htmm_bp_cooling_factor_show(struct kobject *kobj,
 				   struct kobj_attribute *attr, char *buf)
@@ -3793,6 +3845,8 @@ static struct attribute *htmm_attrs[] = {
 	&htmm_force_warm_attr.attr,
 	&htmm_oversubscribe_hot_attr.attr,
 	&htmm_adaptive_warm_attr.attr,
+	&htmm_adaptive_active_lower_bound_attr.attr,
+	&htmm_trend_adaptive_thres_count_attr.attr,
 	&htmm_bp_cooling_factor_attr.attr,
 	&htmm_bp_inc_attr.attr,
 	&htmm_util_weight_attr.attr,

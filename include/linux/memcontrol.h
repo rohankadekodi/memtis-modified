@@ -363,6 +363,11 @@ struct mem_cgroup {
 	unsigned long long total_accesses;
 	unsigned long max_nr_dram_pages; /* the maximum number of pages */
 	unsigned long nr_active_pages; /* updated by need_lru_cooling() */
+	unsigned long long hot_page_dram_accesses;
+	unsigned long long hot_page_nvm_accesses;
+	unsigned long long warm_page_dram_accesses;
+	unsigned long long warm_page_nvm_accesses;
+	unsigned long long cold_page_dram_accesses;
 	/* stat for sampled accesses */
 	unsigned long nr_sampled; /* the total number of sampled accesses */
 	unsigned long last_cooling_sample; /* The sample when we last did a cooldown */
@@ -381,6 +386,8 @@ struct mem_cgroup {
 	volatile int change_cooling_rate;
 	unsigned int hot_bucket_last_cooling;
 	unsigned int cur_hot_bucket_lower_bound;
+	unsigned int trend_dec_htmm_thres_hot;
+	unsigned int trend_inc_htmm_thres_hot;
 	/* split */
 	unsigned int split_threshold;
 	unsigned int split_active_threshold;
@@ -397,6 +404,8 @@ struct mem_cgroup {
 	 * the expected DRAM hit ratio when the system only uses 4KB (base) pages.
 	 */
 	unsigned long hotness_hg[16]; // page access histogram
+	unsigned long dram_hotness_hg[16];
+	unsigned long nvm_hotness_hg[16];
 	unsigned long ebp_hotness_hg[16]; // expected bage page
 	/* lock for histogram */
 	spinlock_t access_lock;

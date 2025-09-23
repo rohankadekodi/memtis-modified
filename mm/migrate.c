@@ -341,7 +341,7 @@ static bool remove_migration_pte(struct page *page, struct vm_area_struct *vma,
 			if (!pginfo)
 			    goto out_cooling_check;
 
-			check_base_cooling(pginfo, new, true);
+			check_base_cooling(pginfo, new, true, 0);
 		}
 out_cooling_check:
 #endif

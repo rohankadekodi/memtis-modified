@@ -3405,7 +3405,7 @@ void remove_migration_pmd(struct page_vma_mapped_walk *pvmw, struct page *new)
 	set_pmd_at(mm, mmun_start, pvmw->pmd, pmde);
 #ifdef CONFIG_HTMM
 	{
-	    check_transhuge_cooling(NULL, new, true);
+	    check_transhuge_cooling(NULL, new, true, 0);
 	}
 #endif
 	if ((vma->vm_flags & VM_LOCKED) && !PageDoubleMap(new))
